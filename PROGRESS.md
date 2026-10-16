@@ -482,3 +482,273 @@ Get-Content C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\PROGRESS.md 
 «Читаю PROGRESS.md. Прошлая сессия завершилась на COMPLETED. Сейчас хочу запустить modules/casting. Также надо поправить completed: true и actor в аудите.»
 
 Сессия закрыта. Отличная работа! 🎉
+$path = "C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\PROGRESS.md"
+
+## 🔗 GIT-РЕПОЗИТОРИЙ
+
+### Расположение
+
+| Что | Где |
+|---|---|
+| **Удалённый** | https://github.com/aaa777-hach/iktk-complex |
+| **Локальный** | `C:\Users\Antipovich\Desktop\Оркестр\iktk-complex` |
+| **Ветка** | `main` ↔ `origin/main` |
+
+### Первый коммит
+
+- **Хеш:** `db78faf`
+- **Сообщение:** `Initial commit: working microservices with full project lifecycle`
+- **Файлов:** 207
+- **Строк:** 60 839
+
+### Что НЕ попадает в репозиторий (`.gitignore`)
+
+- `.env` — секреты (только `.env.example` коммитится)
+- `target/` — артефакты Maven
+- `*.jar`, `*.war`, `*.log`
+- `node_modules/`, `dist/`, `build/`
+- `.idea/`, `.vscode/`, `*.iml`
+- `~$*` — временные файлы Word
+- `application-local.yml`, `application-secret.yml`
+
+### Соглашение о коммитах
+
+| Тип | Назначение |
+|---|---|
+| `feat` | новая функциональность |
+| `fix` | исправление бага |
+| `docs` | документация |
+| `refactor` | рефакторинг без смены поведения |
+| `test` | тесты |
+| `chore` | рутина (зависимости, конфиги) |
+
+**Примеры:**
+feat: add casting module integration
+fix: orchestrator persists projectId correctly
+docs: update PROGRESS.md with git section
+chore: remove duplicate module files
+
+text
+
+### Рабочий процесс (перед каждым коммитом)
+
+```powershell
+# 1. Проверить, что не затесалось лишнего
+git status
+
+# 2. Убедиться, что .env не попал
+git ls-files | Select-String "\.env$"
+
+# 3. Добавить изменения
+git add .
+
+# 4. Коммит
+git commit -m "feat: add casting module integration"
+
+# 5. Отправить на GitHub
+git push
+Правила безопасности
+Никогда не коммитить .env — только .env.example.
+
+Перед git push проверять git status — не должно быть target/, *.jar, *.log.
+
+Секреты в application.yml — только через ${ENV_VAR:default}, не хардкод.
+
+Не коммитить большие бинарники (JAR, ZIP, образы дисков).
+
+Полезные команды
+powershell
+git log --oneline
+git status
+git branch -vv
+git remote -v
+git fetch origin
+git diff path/to/file.java
+git checkout -- path/to/file.java
+Типичные проблемы
+Проблема	Решение
+remote: Permission denied	Удалить старые креды (cmdkey /delete) и авторизоваться под правильным аккаунтом
+Everything up-to-date, но файлы не пушатся	Проверить git branch -vv, что ветка main связана с origin/main
+failed to push some refs	git pull origin main --allow-unrelated-histories, потом git push
+BOM в файлах	Сохранять только через [System.IO.File]::WriteAllText(..., UTF8Encoding $false)
+'@	
+b
+y
+t
+e
+s
+=
+[
+S
+y
+s
+t
+e
+m
+.
+I
+O
+.
+F
+i
+l
+e
+]
+:
+:
+R
+e
+a
+d
+A
+l
+l
+B
+y
+t
+e
+s
+(
+bytes=[System.IO.File]::ReadAllBytes(path)
+e
+x
+i
+s
+t
+i
+n
+g
+=
+i
+f
+(
+existing=if(bytes[0] -eq 0xEF -and 
+b
+y
+t
+e
+s
+[
+1
+]
+−
+e
+q
+0
+x
+B
+B
+−
+a
+n
+d
+bytes[1]−eq0xBB−andbytes[2] -eq 0xBF) {
+[System.Text.Encoding]::UTF8.GetString(
+b
+y
+t
+e
+s
+[
+3..
+(
+bytes[3..(bytes.Length-1)])
+} else {
+[System.Text.Encoding]::UTF8.GetString($bytes)
+}
+
+[System.IO.File]::WriteAllText(
+p
+a
+t
+h
+,
+path,existing + 
+a
+d
+d
+i
+t
+i
+o
+n
+,
+(
+N
+e
+w
+−
+O
+b
+j
+e
+c
+t
+S
+y
+s
+t
+e
+m
+.
+T
+e
+x
+t
+.
+U
+T
+F
+8
+E
+n
+c
+o
+d
+i
+n
+g
+addition,(New−ObjectSystem.Text.UTF8Encodingfalse))
+"Дополнен PROGRESS.md (
+(
+(
+G
+e
+t
+−
+I
+t
+e
+m
+((Get−Itempath).Length) байт)"
+
+text
+
+## Шаг 2. Проверить, что раздел добавлен
+
+```powershell
+Select-String -Path "C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\PROGRESS.md" -Pattern "GIT-РЕПОЗИТОРИЙ|Соглашение о коммитах|Правила безопасности"
+Должны увидеть три совпадения.
+
+Шаг 3. Коммит и push
+powershell
+cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex
+git add PROGRESS.md
+git commit -m "docs: add git repository section to PROGRESS.md"
+git push
+Ожидаемый вывод git push:
+
+text
+To https://github.com/aaa777-hach/iktk-complex.git
+   db78faf..abc1234  main -> main
+Шаг 4. Проверить на GitHub
+Обновите https://github.com/aaa777-hach/iktk-complex — увидите 2 коммита.
+
+Что прислать
+Вывод Шага 1 — «Дополнен PROGRESS.md (NNN байт)».
+
+Вывод Шага 2 — 3 совпадения.
+
+Результат git commit и git push.
+
+Число коммитов на GitHub — 2?
