@@ -29,9 +29,9 @@
     <module>auth</module>
     <module>orchestrator</module>
     <module>modules/casting</module>
-    <module>modules/forging</module>
-    <module>modules/machining</module>
-    <module>modules/norming</module>
+    <!-- <module>modules/forging</module> -->
+    <!-- <module>modules/machining</module> -->
+    <!-- <module>modules/norming</module> -->
 
     <!-- Недописанные модули: временно исключены из сборки -->
     <!-- <module>services/equipment-service</module> -->
