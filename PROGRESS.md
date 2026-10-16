@@ -752,3 +752,315 @@ To https://github.com/aaa777-hach/iktk-complex.git
 Результат git commit и git push.
 
 Число коммитов на GitHub — 2?
+$base = "C:\Users\Antipovich\Desktop\Оркестр\iktk-complex"
+$path = "$base\PROGRESS.md"
+
+$addition = @'
+
+
+---
+
+## 🆕 ОБНОВЛЕНИЯ (2026-10-16)
+
+## 🆕 ОБНОВЛЕНИЯ (2026-10-16)
+
+### Исправленные проблемы
+
+Обе проблемы из раздела «Известные мелкие проблемы» **устранены**.
+
+#### 1. `completed: false` при `state: COMPLETED` — РЕШЕНО ✅
+
+**Причина:** `ProjectState.toString()` возвращал `"COMPLETED (Завершено)"`, а геттер `isCompleted()` в `OrchestrationResponse` проверял `"COMPLETED".equals(state)` — не совпадало.
+
+**Правка** в `orchestrator/.../service/OrchestrationService.java`, метод `buildResponse`:
+
+```java
+private OrchestrationResponse buildResponse(ProjectRuntime runtime,
+                                            StateMachine<ProjectState, ProjectEvent> sm) {
+    ProjectState state = sm.getState().getId();
+    return OrchestrationResponse.builder()
+            .projectId(runtime.getProjectId())
+            .projectName(runtime.getProjectName())
+            .state(state.name())                        // вместо state.toString()
+            .stateDisplayName(state.getDisplayName())
+            .stateCategory(state.getCategory().name())
+            .pointOfControl(state.isPointOfControl())
+            .awaitingUserAction(state.isPointOfControl())
+            .availableEvents(transitionHandler.availableEvents(state))
+            .updatedAt(runtime.getUpdatedAt())
+            .build();
+}
+Результат:
+
+text
+шаг 4: state=COMPLETED | display=Завершено | completed=True | awaiting=False
+Коммит: e9adfb1 — fix(orchestrator): correct state/completed/awaitingUserAction in OrchestrationResponse
+
+2. actor: SYSTEM вместо реального пользователя — РЕШЕНО ✅
+Причина: decisionLogService.log(...) вызывался без actor → по умолчанию "SYSTEM".
+
+Правка в orchestrator/.../service/OrchestrationService.java:
+
+Добавлены импорты:
+
+java
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+Добавлен метод:
+
+java
+private String currentActor() {
+    try {
+        ServletRequestAttributes attrs =
+                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attrs != null) {
+            String userId = attrs.getRequest().getHeader("X-User-Id");
+            if (userId != null && !userId.isBlank()) {
+                return userId;
+            }
+        }
+    } catch (Exception ignored) {
+        // вне HTTP-запроса (например, из RabbitMQ)
+    }
+    return "SYSTEM";
+}
+Все вызовы decisionLogService.log(projectId, event, payload) → decisionLogService.log(projectId, event, payload, currentActor()).
+
+Результат в БД:
+
+text
+   event_type    | actor |          created_at
+-----------------+-------+-------------------------------
+ PROJECT_STARTED | admin | 2026-10-16 13:17:30.782218+00
+ APPROVED        | admin | 2026-10-16 13:17:30.90268+00
+Для RabbitMQ-консьюмера (вне HTTP) по-прежнему SYSTEM — это правильно.
+
+Коммит: f0a68fc — fix(orchestrator): use real user as actor in audit log
+
+История коммитов (GitHub)
+text
+f0a68fc fix(orchestrator): use real user as actor in audit log
+e9adfb1 fix(orchestrator): correct state/completed/awaitingUserAction in OrchestrationResponse
+322ea96 docs: add git repository section to PROGRESS.md
+742a53f chore: move module files to correct Maven structure, exclude unfinished modules
+db78faf Initial commit: working microservices with full project lifecycle
+Все синхронизированы с GitHub: https://github.com/aaa777-hach/iktk-complex
+
+Что изменено в структуре проекта (2026-10-16)
+Файлы модулей forging, machining, norming перенесены в правильную Maven-структуру:
+
+modules/forging/ForgingApplication.java → modules/forging/src/main/java/ru/iktk/modules/forging/ForgingApplication.java
+
+modules/forging/service/ForgingProcessService.java → .../src/main/java/ru/iktk/modules/forging/service/ForgingProcessService.java
+
+аналогично для machining, norming
+
+Эти три модуля закомментированы в корневом pom.xml — недописаны (нет DTO, entity, repository, client, config)
+
+Сборка сейчас: BUILD SUCCESS для core, shared, gateway, auth, orchestrator, modules/casting
+
+Следующие шаги (актуальные)
+Запустить modules/casting — модуль с полным набором классов. Потребуется:
+
+modules/casting/application.yml (порт 8083, datasource iktk_casting, rabbitmq, jwt)
+
+modules/casting/src/main/java/ru/iktk/modules/casting/config/SecurityConfig.java (permitAll)
+
+создать БД iktk_casting в PostgreSQL
+
+запустить java -jar .\target\casting.jar в отдельном окне
+
+проверить RabbitMQ-интеграцию (orchestrator ↔ casting)
+
+Дописать services/* (equipment, bom, assembly, recommendation) — большая работа.
+
+Восстановить forging/machining/norming — когда будет время дописать недостающие классы (10+ на каждый).
+'@
+
+b
+y
+t
+e
+s
+=
+[
+S
+y
+s
+t
+e
+m
+.
+I
+O
+.
+F
+i
+l
+e
+]
+:
+:
+R
+e
+a
+d
+A
+l
+l
+B
+y
+t
+e
+s
+(
+bytes=[System.IO.File]::ReadAllBytes(path)
+e
+x
+i
+s
+t
+i
+n
+g
+=
+i
+f
+(
+existing=if(bytes[0] -eq 0xEF -and 
+b
+y
+t
+e
+s
+[
+1
+]
+−
+e
+q
+0
+x
+B
+B
+−
+a
+n
+d
+bytes[1]−eq0xBB−andbytes[2] -eq 0xBF) {
+[System.Text.Encoding]::UTF8.GetString(
+b
+y
+t
+e
+s
+[
+3..
+(
+bytes[3..(bytes.Length-1)])
+} else {
+[System.Text.Encoding]::UTF8.GetString($bytes)
+}
+
+[System.IO.File]::WriteAllText(
+p
+a
+t
+h
+,
+path,existing + 
+a
+d
+d
+i
+t
+i
+o
+n
+,
+(
+N
+e
+w
+−
+O
+b
+j
+e
+c
+t
+S
+y
+s
+t
+e
+m
+.
+T
+e
+x
+t
+.
+U
+T
+F
+8
+E
+n
+c
+o
+d
+i
+n
+g
+addition,(New−ObjectSystem.Text.UTF8Encodingfalse))
+"Дополнен PROGRESS.md (
+(
+(
+G
+e
+t
+−
+I
+t
+e
+m
+((Get−Itempath).Length) байт)"
+
+text
+
+## Шаг 2. Проверить, что раздел добавлен
+
+```powershell
+Select-String -Path $path -Pattern "ОБНОВЛЕНИЯ \(2026-10-16\)|completed: false.*РЕШЕНО|actor: SYSTEM.*РЕШЕНО"
+Должны увидеть 3 совпадения.
+
+Шаг 3. BOM
+powershell
+$bytes = [System.IO.File]::ReadAllBytes($path)[0..2]
+$bom = if ($bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191) { "BOM!" } else { "OK" }
+"PROGRESS.md: $bom"
+Должно быть OK.
+
+Шаг 4. Коммит и push
+powershell
+cd $base
+git add PROGRESS.md
+git commit -m "docs: update PROGRESS.md with fixes (completed flag, real actor in audit)
+
+- Mark 'completed: false' bug as resolved (commit e9adfb1)
+- Mark 'actor: SYSTEM' bug as resolved (commit f0a68fc)
+- Add current commit history (5 commits)
+- Update structure changes (module files moved, modules commented)
+- Refresh next steps (casting module is next)"
+git push
+Что прислать
+Вывод Шага 1 — «Дополнен PROGRESS.md (NNN байт)».
+
+Вывод Шага 2 — 3 совпадения.
+
+Вывод Шага 3 — OK.
+
+Результат git commit и git push.
+
+Начните с Шага 1.
