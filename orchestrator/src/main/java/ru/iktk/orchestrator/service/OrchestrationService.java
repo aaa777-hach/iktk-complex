@@ -6,6 +6,8 @@ import org.springframework.statemachine.StateMachine;
 import org.springframework.statemachine.config.StateMachineFactory;
 import org.springframework.statemachine.support.DefaultStateMachineContext;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.transaction.annotation.Transactional;
 import ru.iktk.core.dto.OrchestrationRequest;
 import ru.iktk.core.dto.OrchestrationResponse;
@@ -104,7 +106,7 @@ public class OrchestrationService {
         dispatchEvent(projectId, sm, ProjectEvent.START_GEOMETRY_INPUT, null);
 
         decisionLogService.log(projectId, "PROJECT_STARTED",
-                Map.of("requestedBy", request.getRequestedBy()));
+                Map.of("requestedBy", request.getRequestedBy()), currentActor());
 
         return buildResponse(runtime, sm);
     }
@@ -123,7 +125,7 @@ public class OrchestrationService {
         transitionHandler.route(projectId, runtime.getState(), sm);
 
         decisionLogService.log(projectId, "ORCHESTRATION_RUN",
-                Map.of("state", runtime.getState().name()));
+                Map.of("state", runtime.getState().name()), currentActor());
 
         return buildResponse(runtime, sm);
     }
@@ -170,7 +172,7 @@ public class OrchestrationService {
         decisionLogService.log(projectId, "APPROVED",
                 Map.of("fromState", current.name(),
                         "event", autoEvent.name(),
-                        "comment", comment == null ? "" : comment));
+                        "comment", comment == null ? "" : comment), currentActor());
 
         return buildResponse(loadRuntime(projectId), sm);
     }
@@ -198,7 +200,7 @@ public class OrchestrationService {
 
         decisionLogService.log(projectId, "EVENT_SENT",
                 Map.of("event", event.name(),
-                        "payload", payload == null ? Map.of() : payload));
+                        "payload", payload == null ? Map.of() : payload), currentActor());
 
         return buildResponse(loadRuntime(projectId), sm);
     }
@@ -251,7 +253,7 @@ public class OrchestrationService {
         resetMachine(sm, runtime.getState());
 
         decisionLogService.log(projectId, "ROLLBACK",
-                Map.of("toVersion", version, "state", runtime.getState().name()));
+                Map.of("toVersion", version, "state", runtime.getState().name()), currentActor());
 
         return buildResponse(runtime, sm);
     }
@@ -279,7 +281,7 @@ public class OrchestrationService {
 
         decisionLogService.log(projectId, success ? "MODULE_RESULT_OK" : "MODULE_RESULT_FAIL",
                 Map.of("event", event.name(),
-                        "payload", payload == null ? Map.of() : payload));
+                        "payload", payload == null ? Map.of() : payload), currentActor());
     }
 
     // ------------------------------------------------------------------
@@ -301,7 +303,7 @@ public class OrchestrationService {
 
         log.error("Модуль исчерпал попытки: projectId={}, event={}", projectId, event);
         decisionLogService.log(projectId, "MODULE_FAILED",
-                Map.of("event", event.name(), "attempts", String.valueOf(attempt)));
+                Map.of("event", event.name(), "attempts", String.valueOf(attempt)), currentActor());
 
         // Состояние «Ожидает решения» — точка контроля для инженера
         transitionHandler.moveToAwaitingDecision(sm, projectId, event);
@@ -403,5 +405,24 @@ public class OrchestrationService {
     /** Для диагностики. */
     public List<String> activeProjects() {
         return List.copyOf(machines.keySet());
+    }
+    /**
+     * Получить actor из текущего HTTP-запроса (заголовок X-User-Id, который подставляет gateway).
+     * Для вызовов вне HTTP-контекста (например, из RabbitMQ-консьюмера) — возвращает "SYSTEM".
+     */
+    private String currentActor() {
+        try {
+            ServletRequestAttributes attrs =
+                    (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs != null) {
+                String userId = attrs.getRequest().getHeader("X-User-Id");
+                if (userId != null && !userId.isBlank()) {
+                    return userId;
+                }
+            }
+        } catch (Exception ignored) {
+            // вне HTTP-запроса
+        }
+        return "SYSTEM";
     }
 }
