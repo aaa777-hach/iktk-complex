@@ -1064,3 +1064,101 @@ git push
 Результат git commit и git push.
 
 Начните с Шага 1.
+
+---
+
+## 📌 СЕССИЯ 2026-10-16 (вечер)
+
+### Что сделано
+
+#### 1. Git-репозиторий настроен и синхронизирован с GitHub
+
+URL: https://github.com/aaa777-hach/iktk-complex
+
+7 коммитов:
+```
+5e3e116 feat(casting): make JPA entities managed, add application.yml
+8a6584a docs: update PROGRESS.md with fixes (completed flag, real actor in audit)
+f0a68fc fix(orchestrator): use real user as actor in audit log
+e9adfb1 fix(orchestrator): correct state/completed/awaitingUserAction in OrchestrationResponse
+322ea96 docs: add git repository section to PROGRESS.md
+742a53f chore: move module files to correct Maven structure, exclude unfinished modules
+db78faf Initial commit: working microservices with full project lifecycle
+```
+
+#### 2. Правки orchestrator (обе проблемы из раздела «Известные мелкие проблемы» закрыты)
+
+- completed: true при state: COMPLETED — исправлено в buildResponse
+- actor = admin в decision_log (было SYSTEM) — через currentActor(), читающий X-User-Id из HTTP-запроса
+
+#### 3. modules/casting собран и запущен
+
+- Создан modules/casting/application.yml (порт 8083, PostgreSQL iktk_casting, RabbitMQ)
+- В PostgreSQL создана база iktk_casting
+- CastingProcess → @Entity (с @Id, @GeneratedValue, @PrePersist)
+- GatingSystem, ShrinkageCalculation → @Embeddable
+- List<Stage>, Object tooling, Object manufacturabilityReport → @Transient
+- Запущен успешно: Started CastingApplication на порту 8083
+
+#### 4. Файлы модулей приведены к Maven-структуре
+
+- modules/forging, machining, norming — файлы перенесены в src/main/java/ru/iktk/modules/<name>/
+- Эти три модуля закомментированы в корневом pom.xml (недописаны: нет DTO, entity, repository, client, config)
+
+### Текущий статус
+
+Работают 4 сервиса:
+- auth — 8081 (UP)
+- orchestrator — 8082 (UP)
+- gateway — 8080 (UP)
+- casting — 8083 (UP)
+
+Сборка: mvn clean package -DskipTests → BUILD SUCCESS (core, shared, gateway, auth, orchestrator, modules/casting).
+
+### Что НЕ сделано — на следующий раз
+
+casting не имеет точки входа:
+- Нет @RestController — не принимает HTTP-запросы
+- Нет @RabbitListener — не слушает очередь iktk.casting.queue
+- Методы зависят от GeometryClient → http://integration:8090 (сервис не запущен)
+
+Возможные варианты продолжения:
+
+A. Добавить CastingController (@RestController, ~30 строк) → REST-endpoint POST /api/v1/casting/design. Нужно также добавить маршрут в gateway (/api/v1/casting/** → http://localhost:8083).
+
+B. Добавить @RabbitListener на iktk.casting.queue → приём команд от orchestrator через RabbitMQ.
+
+C. Запустить остальные модули (forging, machining, norming) — сначала дописать недостающие классы.
+
+D. Дописать services/* (equipment, bom, assembly, recommendation).
+
+Приоритет: сначала A (быстрый REST-endpoint), потом B (RabbitMQ).
+
+### Быстрый старт следующей сессии
+
+```powershell
+# 1. Docker
+docker start iktk-postgres iktk-rabbitmq iktk-redis iktk-minio
+
+# 2. Четыре сервиса — каждый в своём окне
+cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\auth;              java -jar .\target\auth.jar
+cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\orchestrator;      java -jar .\target\orchestrator.jar
+cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\gateway;           java -jar .\target\gateway.jar
+cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\modules\casting;   java -jar .\target\casting.jar
+
+# 3. Проверка
+Invoke-RestMethod -Uri http://localhost:8081/actuator/health
+Invoke-RestMethod -Uri http://localhost:8082/actuator/health
+Invoke-RestMethod -Uri http://localhost:8080/actuator/health
+Invoke-RestMethod -Uri http://localhost:8083/actuator/health
+```
+
+### Git workflow
+
+```powershell
+cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex
+git status
+git add <файлы>
+git commit -m "тип: описание"
+git push
+```
