@@ -367,11 +367,16 @@ public class OrchestrationService {
 
     private OrchestrationResponse buildResponse(ProjectRuntime runtime,
                                                 StateMachine<ProjectState, ProjectEvent> sm) {
+        ProjectState state = sm.getState().getId();
         return OrchestrationResponse.builder()
                 .projectId(runtime.getProjectId())
                 .projectName(runtime.getProjectName())
-                .state(sm.getState().getId())
-                .availableEvents(transitionHandler.availableEvents(sm.getState().getId()))
+                .state(state.name())
+                .stateDisplayName(state.getDisplayName())
+                .stateCategory(state.getCategory().name())
+                .pointOfControl(state.isPointOfControl())
+                .awaitingUserAction(state.isPointOfControl())
+                .availableEvents(transitionHandler.availableEvents(state))
                 .updatedAt(runtime.getUpdatedAt())
                 .build();
     }
