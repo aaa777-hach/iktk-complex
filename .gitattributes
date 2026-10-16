@@ -1,0 +1,25 @@
+# Автоматически нормализовать переводы строк
+* text=auto
+
+# Java / Kotlin / Gradle
+*.java text eol=lf
+*.kt   text eol=lf
+*.gradle text eol=lf
+
+# Конфиги / скрипты
+*.xml  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.sql  text eol=lf
+*.sh   text eol=lf
+*.ps1  text eol=crlf
+
+# Бинарные файлы
+*.jar  binary
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary

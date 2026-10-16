@@ -1,0 +1,1060 @@
+openapi: 3.0.3
+
+info:
+  title: ИКТК — Equipment Service API
+  description: |
+    **Сервис оборудования ИКТК**
+
+    REST API сервиса `equipment-service`, отвечающего за:
+    - реестр оборудования предприятия (паспорт, модель, статус);
+    - возможности оборудования по операциям;
+    - состояние и загрузку станков;
+    - массовый импорт из CSV/XLSX;
+    - сопоставление требований ТП с парком (matching);
+    - gap-анализ: выявление дефицита оборудования;
+    - проверку совместимости с оснасткой.
+
+    **Аутентификация:** JWT Bearer (`Authorization: Bearer <token>`).
+
+    **Трассировка:** заголовки `X-Request-Id`, `X-Correlation-Id`.
+
+    **Ошибки:** единый формат с полями `error`, `code`, `message`, `context`, `timestamp`.
+  version: 1.0.0
+  contact:
+    name: ИКТК Team
+    email: support@example.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://iktk.example.com/api/v1
+    description: Production
+  - url: https://iktk-stage.example.com/api/v1
+    description: Staging
+  - url: http://localhost:8080/api/v1
+    description: Локальная разработка
+
+tags:
+  - name: Equipment
+    description: Реестр оборудования
+  - name: Capabilities
+    description: Возможности оборудования
+  - name: Status
+    description: Состояние и загрузка
+  - name: Matching
+    description: Сопоставление требований с парком
+  - name: GapAnalysis
+    description: Gap-анализ дефицита оборудования
+  - name: Import
+    description: Массовый импорт оборудования
+  - name: Tooling
+    description: Совместимость с оснасткой
+
+security:
+  - BearerAuth: []
+
+# =============================================================================
+# Пути
+# =============================================================================
+paths:
+
+  # ===========================================================================
+  # Реестр оборудования
+  # ===========================================================================
+
+  /equipment:
+    get:
+      tags: [Equipment]
+      summary: Список оборудования (постраничный)
+      operationId: listEquipment
+      parameters:
+        - name: type
+          in: query
+          description: Тип оборудования
+          schema:
+            $ref: '#/components/schemas/EquipmentType'
+        - name: status
+          in: query
+          description: Статус оборудования
+          schema:
+            $ref: '#/components/schemas/EquipmentStatus'
+        - name: enterpriseCode
+          in: query
+          description: Код предприятия
+          schema:
+            type: string
+            maxLength: 64
+        - name: search
+          in: query
+          description: Поиск по наименованию, инв. № или модели
+          schema:
+            type: string
+            maxLength: 128
+        - name: page
+          in: query
+          description: Номер страницы (с 0)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          description: Размер страницы (1–100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, type, status, updatedAt, createdAt]
+            default: name
+        - name: sortDir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: Постраничный список
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Equipment]
+      summary: Добавить оборудование
+      operationId: createEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EquipmentDto'
+      responses:
+        '201':
+          description: Оборудование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Дубликат инвентарного номера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /equipment/{equipmentId}:
+    parameters:
+      - $ref: '#/components/parameters/EquipmentId'
+    get:
+      tags: [Equipment]
+      summary: Получить оборудование по ID
+      operationId: getEquipment
+      responses:
+        '200':
+          description: Оборудование
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Equipment]
+      summary: Обновить оборудование
+      operationId: updateEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EquipmentDto'
+      responses:
+        '200':
+          description: Оборудование обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Equipment]
+      summary: Списать (архивировать) оборудование
+      operationId: deleteEquipment
+      responses:
+        '204':
+          description: Оборудование списано
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Возможности оборудования
+  # ===========================================================================
+
+  /equipment/{equipmentId}/capabilities:
+    parameters:
+      - $ref: '#/components/parameters/EquipmentId'
+    get:
+      tags: [Capabilities]
+      summary: Возможности оборудования
+      operationId: getEquipmentCapabilities
+      responses:
+        '200':
+          description: Список возможностей
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EquipmentCapabilityDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Capabilities]
+      summary: Заменить набор возможностей
+      operationId: replaceEquipmentCapabilities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/EquipmentCapabilityDto'
+      responses:
+        '200':
+          description: Возможности обновлены
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EquipmentCapabilityDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ===========================================================================
+  # Состояние и загрузка
+  # ===========================================================================
+
+  /equipment/{equipmentId}/status:
+    parameters:
+      - $ref: '#/components/parameters/EquipmentId'
+    get:
+      tags: [Status]
+      summary: Состояние и загрузка
+      operationId: getEquipmentStatus
+      responses:
+        '200':
+          description: Состояние оборудования
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentStatusDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Status]
+      summary: Обновить состояние и загрузку
+      operationId: updateEquipmentStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EquipmentStatusDto'
+      responses:
+        '200':
+          description: Состояние обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentStatusDto'
+
+  # ===========================================================================
+  # Matching
+  # ===========================================================================
+
+  /equipment/matching:
+    post:
+      tags: [Matching]
+      summary: Сопоставить требования ТП с парком
+      description: Возвращает назначенное оборудование или дефицит по каждой операции
+      operationId: matchEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MatchingRequest'
+      responses:
+        '200':
+          description: Результат сопоставления
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ===========================================================================
+  # Gap-анализ
+  # ===========================================================================
+
+  /equipment/gap-analysis:
+    post:
+      tags: [GapAnalysis]
+      summary: Запустить gap-анализ по проекту
+      operationId: runGapAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GapAnalysisRequest'
+      responses:
+        '202':
+          description: Gap-анализ запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GapAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /equipment/gap-analysis/{analysisId}:
+    parameters:
+      - name: analysisId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [GapAnalysis]
+      summary: Получить результаты gap-анализа
+      operationId: getGapAnalysis
+      responses:
+        '200':
+          description: Результаты gap-анализа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GapAnalysisResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /equipment/projects/{projectId}/gap-analysis:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [GapAnalysis]
+      summary: Последний gap-анализ по проекту
+      operationId: getLatestGapAnalysis
+      responses:
+        '200':
+          description: Результаты gap-анализа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GapAnalysisResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Импорт
+  # ===========================================================================
+
+  /equipment/import:
+    post:
+      tags: [Import]
+      summary: Массовый импорт оборудования
+      operationId: importEquipment
+      parameters:
+        - name: updateExisting
+          in: query
+          description: Обновлять существующие записи
+          schema:
+            type: boolean
+            default: false
+        - name: dryRun
+          in: query
+          description: Проверка без сохранения
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV или XLSX с перечнем оборудования
+              required: [file]
+      responses:
+        '202':
+          description: Импорт запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentImportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ===========================================================================
+  # Совместимость с оснасткой
+  # ===========================================================================
+
+  /equipment/{equipmentId}/tooling:
+    parameters:
+      - $ref: '#/components/parameters/EquipmentId'
+    get:
+      tags: [Tooling]
+      summary: Совместимая оснастка
+      operationId: getCompatibleTooling
+      responses:
+        '200':
+          description: Список ID оснастки
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+
+  # ===========================================================================
+  # Сводка
+  # ===========================================================================
+
+  /equipment/summary:
+    get:
+      tags: [Equipment]
+      summary: Сводка по парку оборудования
+      operationId: getEquipmentSummary
+      responses:
+        '200':
+          description: Сводка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentSummary'
+
+  # ===========================================================================
+  # Служебные
+  # ===========================================================================
+
+  /equipment/health:
+    get:
+      tags: [Equipment]
+      summary: Проверка доступности сервиса
+      operationId: equipmentHealth
+      security: []
+      responses:
+        '200':
+          description: Сервис доступен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  service:
+                    type: string
+                    example: equipment-service
+                  timestamp:
+                    type: string
+                    format: date-time
+
+# =============================================================================
+# Компоненты
+# =============================================================================
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    EquipmentId:
+      name: equipmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор оборудования
+
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор проекта
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+
+    # ---- Общие ------------------------------------------------------------
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: EQUIPMENT_ERROR
+        code:
+          type: string
+          example: EQUIPMENT_NOT_FOUND
+        message:
+          type: string
+        context:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+
+    # ---- ENUM-типы -------------------------------------------------------
+
+    EquipmentType:
+      type: string
+      enum:
+        - TURNING
+        - MILLING
+        - DRILLING
+        - GRINDING
+        - PRESS
+        - CASTING
+        - WELDING
+        - EDM
+        - LASER
+        - OTHER
+
+    EquipmentStatus:
+      type: string
+      enum:
+        - AVAILABLE
+        - BUSY
+        - MAINTENANCE
+        - DECOMMISSIONED
+
+    EquipmentSource:
+      type: string
+      enum:
+        - MANUAL
+        - IMPORT
+        - API
+        - INTEGRATION
+
+    # ---- Оборудование ----------------------------------------------------
+
+    EquipmentDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 255
+          example: Токарный станок с ЧПУ
+        type:
+          $ref: '#/components/schemas/EquipmentType'
+        model:
+          type: string
+          maxLength: 128
+        manufacturer:
+          type: string
+          maxLength: 128
+        inventoryNo:
+          type: string
+          maxLength: 64
+          example: INV-001234
+        serialNo:
+          type: string
+          maxLength: 64
+        manufactureYear:
+          type: integer
+          minimum: 1900
+          maximum: 2100
+        enterpriseCode:
+          type: string
+          maxLength: 64
+        departmentCode:
+          type: string
+          maxLength: 64
+        location:
+          type: string
+          maxLength: 255
+        status:
+          $ref: '#/components/schemas/EquipmentStatus'
+        responsible:
+          type: string
+          maxLength: 128
+        commissionedAt:
+          type: string
+          format: date-time
+        decommissionedAt:
+          type: string
+          format: date-time
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentCapabilityDto'
+        currentStatus:
+          $ref: '#/components/schemas/EquipmentStatusDto'
+        compatibleTooling:
+          type: array
+          items:
+            type: string
+            format: uuid
+        parameters:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [name, type]
+
+    EquipmentPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentDto'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    EquipmentSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        available:
+          type: integer
+        busy:
+          type: integer
+        maintenance:
+          type: integer
+        decommissioned:
+          type: integer
+        byType:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                $ref: '#/components/schemas/EquipmentType'
+              count:
+                type: integer
+
+    # ---- Возможности -----------------------------------------------------
+
+    EquipmentCapabilityDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        equipmentId:
+          type: string
+          format: uuid
+        operationType:
+          type: string
+          maxLength: 64
+          example: CNC_MACHINING
+        operationName:
+          type: string
+          maxLength: 255
+        operationCategory:
+          type: string
+          maxLength: 32
+        tolerance:
+          type: string
+          maxLength: 32
+          example: IT7
+        accuracyGrade:
+          type: integer
+          minimum: 1
+          maximum: 18
+        maxDimensions:
+          type: string
+          maxLength: 64
+          example: 1000x500x400
+        minDimensions:
+          type: string
+          maxLength: 64
+        maxDiameterMm:
+          type: number
+          format: double
+        maxLengthMm:
+          type: number
+          format: double
+        maxMassKg:
+          type: number
+          format: double
+        powerKw:
+          type: number
+          format: double
+        forceKn:
+          type: number
+          format: double
+        temperatureC:
+          type: number
+          format: double
+        spindleSpeedMinRpm:
+          type: integer
+        spindleSpeedMaxRpm:
+          type: integer
+        feedMin:
+          type: number
+          format: double
+        feedMax:
+          type: number
+          format: double
+        productivityPerHour:
+          type: number
+          format: double
+        cncCapable:
+          type: boolean
+        axesCount:
+          type: integer
+        cncSystem:
+          type: string
+          maxLength: 64
+          example: Fanuc
+        materials:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+        parameters:
+          type: object
+          additionalProperties: true
+        comment:
+          type: string
+          maxLength: 1000
+      required: [operationType]
+
+    # ---- Состояние -------------------------------------------------------
+
+    EquipmentStatusDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        equipmentId:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/EquipmentStatus'
+        loadPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        schedule:
+          type: string
+          maxLength: 64
+        lastUsedAt:
+          type: string
+          format: date-time
+        nextMaintenanceAt:
+          type: string
+          format: date-time
+        notes:
+          type: string
+          maxLength: 1000
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ---- Matching --------------------------------------------------------
+
+    MatchingRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        strategy:
+          type: string
+          enum: [STRICT, FLEXIBLE, HYBRID]
+          default: STRICT
+        requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentRequirementDto'
+      required: [projectId, requirements]
+
+    MatchingResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentMatch'
+        gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentGap'
+        matchedCount:
+          type: integer
+        gapCount:
+          type: integer
+
+    EquipmentMatch:
+      type: object
+      properties:
+        requirementId:
+          type: string
+          format: uuid
+        operationId:
+          type: string
+        operationType:
+          type: string
+        equipmentId:
+          type: string
+          format: uuid
+        equipmentName:
+          type: string
+        score:
+          type: number
+          format: float
+        matchedParameters:
+          type: object
+          additionalProperties: true
+
+    EquipmentGap:
+      type: object
+      properties:
+        gapId:
+          type: string
+          format: uuid
+        requirementId:
+          type: string
+          format: uuid
+        operationType:
+          type: string
+        gapReason:
+          type: string
+        severity:
+          type: string
+          enum: [CRITICAL, MAJOR, MINOR]
+        missingParameters:
+          type: array
+          items:
+            type: string
+
+    EquipmentRequirementDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        processId:
+          type: string
+          format: uuid
+        stageId:
+          type: string
+          format: uuid
+        operationId:
+          type: string
+        operationType:
+          type: string
+          maxLength: 64
+        requiredEquipmentType:
+          type: string
+          maxLength: 64
+        requiredAccuracy:
+          type: string
+          maxLength: 32
+        maxDimensions:
+          type: string
+          maxLength: 64
+        minDimensions:
+          type: string
+          maxLength: 64
+        material:
+          type: string
+          maxLength: 128
+        requiredPowerKw:
+          type: number
+          format: double
+        requiredForceKn:
+          type: number
+          format: double
+        requiredCnc:
+          type: boolean
+        requiredAxes:
+          type: integer
+        requiredTemperatureC:
+          type: number
+          format: double
+        quantity:
+          type: integer
+          minimum: 1
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 10
+        notes:
+          type: string
+          maxLength: 1000
+      required: [operationType]
+
+    # ---- Gap-анализ ------------------------------------------------------
+
+    GapAnalysisRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        strategy:
+          type: string
+          enum: [STRICT, FLEXIBLE, HYBRID]
+          default: STRICT
+        requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentRequirementDto'
+      required: [projectId]
+
+    GapAnalysisResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        strategy:
+          type: string
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED]
+        gapsCount:
+          type: integer
+        recommendationsCount:
+          type: integer
+        gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentGap'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        error:
+          type: string
+
+    # ---- Импорт ----------------------------------------------------------
+
+    EquipmentImportResult:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Всего строк в файле
+        created:
+          type: integer
+          description: Создано записей
+        updated:
+          type: integer
+          description: Обновлено записей
+        skipped:
+          type: integer
+          description: Пропущено записей
+        errors:
+          type: array
+          items:
+            type: string
+          description: Список ошибок
+        dryRun:
+          type: boolean
+          description: Был ли режим проверки
+
+# =============================================================================
+# Теги для группировки в Swagger UI
+# =============================================================================
+
+x-tagGroups:
+  - name: Реестр
+    tags: [Equipment]
+  - name: Возможности
+    tags: [Capabilities, Status, Tooling]
+  - name: Анализ
+    tags: [Matching, GapAnalysis]
+  - name: Импорт
+    tags: [Import]

@@ -1,0 +1,605 @@
+# =============================================================================
+# ИКТК: Kubernetes-манифест для сервиса-оркестратора
+# Путь: deployment/k8s/orchestrator-deployment.yaml
+# Назначение: развёртывание сервиса orchestrator (позиции 1–10)
+#             с автомасштабированием, health-check, ресурсами и
+#             конфигурацией через ConfigMap/Secret.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Namespace
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iktk
+  labels:
+    app.kubernetes.io/name: iktk
+    app.kubernetes.io/part-of: iktk-complex
+    app.kubernetes.io/managed-by: kubectl
+
+---
+# -----------------------------------------------------------------------------
+# 2. Deployment
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: iktk-complex
+    app.kubernetes.io/version: "1.0.0"
+  annotations:
+    description: "ИКТК: сервис-оркестратор («дирижёр») — управление жизненным циклом ТПП"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orchestrator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orchestrator
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: iktk-complex
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      # ---- Сервисный аккаунт -------------------------------------------
+      serviceAccountName: orchestrator-sa
+
+      # ---- Безопасность -------------------------------------------------
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ---- Приоритет ----------------------------------------------------
+      priorityClassName: iktk-critical
+
+      # ---- Изображение --------------------------------------------------
+      containers:
+        - name: orchestrator
+          image: registry.example.com/iktk/orchestrator:1.0.0
+          imagePullPolicy: IfNotPresent
+
+          # ---- Порты --------------------------------------------------
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: management
+              containerPort: 8081
+              protocol: TCP
+
+          # ---- Переменные окружения -----------------------------------
+          envFrom:
+            - configMapRef:
+                name: orchestrator-config
+            - secretRef:
+                name: orchestrator-secrets
+
+          env:
+            - name: JAVA_OPTS
+              value: >-
+                -XX:+UseContainerSupport
+                -XX:MaxRAMPercentage=75.0
+                -XX:InitialRAMPercentage=50.0
+                -XX:+UseG1GC
+                -XX:+ExitOnOutOfMemoryError
+                -Djava.security.egd=file:/dev/./urandom
+                -Dspring.profiles.active=k8s
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          # ---- Ресурсы -------------------------------------------------
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+
+          # ---- Проверки ------------------------------------------------
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+            timeoutSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          # ---- Монтирование томов -------------------------------------
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /var/log/iktk
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+
+          # ---- Безопасность контейнера --------------------------------
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+      # ---- Тома ---------------------------------------------------------
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: logs
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: config
+          configMap:
+            name: orchestrator-config
+            items:
+              - key: application-k8s.yml
+                path: application-k8s.yml
+
+      # ---- Параметры планирования ---------------------------------------
+      terminationGracePeriodSeconds: 60
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+
+      # ---- Распределение по узлам ---------------------------------------
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: orchestrator
+                topologyKey: kubernetes.io/hostname
+
+      # ---- Образы для pull ----------------------------------------------
+      imagePullSecrets:
+        - name: registry-credentials
+
+---
+# -----------------------------------------------------------------------------
+# 3. ServiceAccount
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orchestrator-sa
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/part-of: iktk-complex
+automountServiceAccountToken: false
+
+---
+# -----------------------------------------------------------------------------
+# 4. Service (ClusterIP)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: iktk-complex
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: orchestrator
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+    - name: management
+      port: 8081
+      targetPort: management
+      protocol: TCP
+  sessionAffinity: None
+
+---
+# -----------------------------------------------------------------------------
+# 5. Service (Headless) — для прямого доступа к подам
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-headless
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: orchestrator
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: management
+      port: 8081
+      targetPort: management
+
+---
+# -----------------------------------------------------------------------------
+# 6. HorizontalPodAutoscaler
+# -----------------------------------------------------------------------------
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: orchestrator-hpa
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/part-of: iktk-complex
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: orchestrator
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+
+---
+# -----------------------------------------------------------------------------
+# 7. PodDisruptionBudget
+# -----------------------------------------------------------------------------
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: orchestrator-pdb
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orchestrator
+
+---
+# -----------------------------------------------------------------------------
+# 8. NetworkPolicy
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: orchestrator-netpol
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: orchestrator
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Трафик от API Gateway
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Трафик от Prometheus (метрики)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8081
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # PostgreSQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # RabbitMQ
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rabbitmq
+      ports:
+        - protocol: TCP
+          port: 5672
+    # MinIO
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Другие сервисы ИКТК
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: iktk-complex
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# -----------------------------------------------------------------------------
+# 9. ConfigMap
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orchestrator-config
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/part-of: iktk-complex
+data:
+  SPRING_PROFILES_ACTIVE: "k8s"
+  SERVER_PORT: "8080"
+  MANAGEMENT_SERVER_PORT: "8081"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/iktk"
+  SPRING_DATASOURCE_DRIVER_CLASS_NAME: "org.postgresql.Driver"
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "validate"
+  SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "org.hibernate.dialect.PostgreSQLDialect"
+  SPRING_RABBITMQ_HOST: "rabbitmq"
+  SPRING_RABBITMQ_PORT: "5672"
+  SPRING_RABBITMQ_VIRTUAL_HOST: "/iktk"
+  IKTK_MESSAGING_COMMANDS_EXCHANGE: "iktk.commands"
+  IKTK_MESSAGING_RESULTS_QUEUE: "iktk.orchestrator.results.queue"
+  IKTK_MESSAGING_ROUTING_PREFIX: "iktk.command"
+  IKTK_STORAGE_ENDPOINT: "http://minio:9000"
+  IKTK_STORAGE_BUCKET: "iktk-files"
+  IKTK_STORAGE_TEMP_DIR: "/tmp/iktk-storage"
+  IKTK_GATEWAY_URI: "http://gateway:8080"
+  IKTK_AUTH_URI: "http://auth:8081"
+  IKTK_EQUIPMENT_URI: "http://equipment-service:8080"
+  IKTK_BOM_URI: "http://bom-service:8080"
+  IKTK_ASSEMBLY_URI: "http://assembly-process-service:8080"
+  IKTK_RECOMMENDATION_URI: "http://recommendation-service:8080"
+  IKTK_CAD_MODE: "api"
+  LOGGING_LEVEL_ROOT: "INFO"
+  LOGGING_LEVEL_RU_IKTK: "DEBUG"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
+  application-k8s.yml: |
+    spring:
+      datasource:
+        url: jdbc:postgresql://postgres:5432/iktk
+        username: ${IKTK_DB_USER}
+        password: ${IKTK_DB_PASSWORD}
+        hikari:
+          maximum-pool-size: 20
+          minimum-idle: 5
+          connection-timeout: 30000
+          idle-timeout: 600000
+          max-lifetime: 1800000
+      jpa:
+        open-in-view: false
+        properties:
+          hibernate:
+            jdbc:
+              batch_size: 50
+              order_inserts: true
+              order_updates: true
+            query:
+              in_clause_parameter_padding: true
+      rabbitmq:
+        host: rabbitmq
+        port: 5672
+        username: ${IKTK_RABBIT_USER}
+        password: ${IKTK_RABBIT_PASSWORD}
+        virtual-host: /iktk
+        listener:
+          simple:
+            acknowledge-mode: manual
+            prefetch: 10
+            concurrency: 4
+            max-concurrency: 16
+
+    iktk:
+      orchestrator:
+        retry:
+          max-attempts: 3
+          backoff-ms: 2000
+        points-of-control:
+          enabled: true
+        messaging:
+          commands-exchange: iktk.commands
+          results-queue: iktk.orchestrator.results.queue
+      storage:
+        endpoint: http://minio:9000
+        access-key: ${IKTK_MINIO_ACCESS_KEY}
+        secret-key: ${IKTK_MINIO_SECRET_KEY}
+        bucket: iktk-files
+      cad:
+        mode: api
+      security:
+        jwt:
+          issuer: iktk
+          secret: ${IKTK_JWT_SECRET}
+
+    management:
+      endpoints:
+        web:
+          exposure:
+            include: health,info,prometheus,metrics
+      endpoint:
+        health:
+          probes:
+            enabled: true
+          show-details: when-authorized
+      metrics:
+        export:
+          prometheus:
+            enabled: true
+        tags:
+          application: orchestrator
+          namespace: ${POD_NAMESPACE}
+
+    logging:
+      level:
+        root: INFO
+        ru.iktk: DEBUG
+        org.springframework.statemachine: DEBUG
+
+---
+# -----------------------------------------------------------------------------
+# 10. Secret (шаблон — заполняется через CI/CD или Sealed Secrets)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: orchestrator-secrets
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/part-of: iktk-complex
+type: Opaque
+stringData:
+  IKTK_DB_USER: "iktk_app"
+  IKTK_DB_PASSWORD: "CHANGE_ME_STRONG_PASSWORD"
+  IKTK_RABBIT_USER: "iktk"
+  IKTK_RABBIT_PASSWORD: "CHANGE_ME_STRONG_PASSWORD"
+  IKTK_MINIO_ACCESS_KEY: "iktk-minio"
+  IKTK_MINIO_SECRET_KEY: "CHANGE_ME_STRONG_PASSWORD"
+  IKTK_JWT_SECRET: "CHANGE_ME_AT_LEAST_32_CHARS_LONG_SECRET"
+
+---
+# -----------------------------------------------------------------------------
+# 11. PriorityClass (для критичных сервисов ИКТК)
+# -----------------------------------------------------------------------------
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: iktk-critical
+value: 1000000
+globalDefault: false
+description: "ИКТК: критичные сервисы (оркестратор, gateway, auth, БД)"
+
+---
+# -----------------------------------------------------------------------------
+# 12. ServiceMonitor (для Prometheus Operator — опционально)
+# -----------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: orchestrator-monitor
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: orchestrator
+    app.kubernetes.io/part-of: iktk-complex
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orchestrator
+  endpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http

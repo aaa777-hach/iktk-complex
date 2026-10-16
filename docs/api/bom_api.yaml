@@ -1,0 +1,798 @@
+openapi: 3.0.3
+
+info:
+  title: ИКТК — BOM Service API
+  description: |
+    **Сервис BOM (Bill of Materials) ИКТК**
+
+    REST API сервиса `bom-service`, отвечающего за:
+    - анализ сборочных единиц: извлечение структуры изделия (BOM) из CAD;
+    - построение дерева состава изделия (сборка → подсборки → детали);
+    - сохранение позиций, количеств, обозначений, материалов;
+    - ручную корректировку BOM;
+    - извлечение связей и сопряжений сборки (для ТП сборки);
+    - рекомендуемую последовательность установки деталей;
+    - спецификацию по ГОСТ 2.106;
+    - экспорт BOM (CSV, Excel, PDF).
+
+    **Аутентификация:** JWT Bearer (`Authorization: Bearer <token>`).
+
+    **Трассировка:** заголовки `X-Request-Id`, `X-Correlation-Id`.
+
+    **Ошибки:** единый формат с полями `error`, `code`, `message`, `context`, `timestamp`.
+  version: 1.0.0
+  contact:
+    name: ИКТК Team
+    email: support@example.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://iktk.example.com/api/v1
+    description: Production
+  - url: https://iktk-stage.example.com/api/v1
+    description: Staging
+  - url: http://localhost:8080/api/v1
+    description: Локальная разработка
+
+tags:
+  - name: Analysis
+    description: Анализ сборочной единицы, извлечение BOM
+  - name: Bom
+    description: Состав изделия (BOM)
+  - name: Items
+    description: Позиции BOM
+  - name: Connections
+    description: Связи и сопряжения сборки
+  - name: Sequence
+    description: Последовательность установки
+  - name: Specification
+    description: Спецификация ГОСТ 2.106
+  - name: Export
+    description: Экспорт BOM
+
+security:
+  - BearerAuth: []
+
+# =============================================================================
+# Пути
+# =============================================================================
+paths:
+
+  # ===========================================================================
+  # Анализ сборочной единицы
+  # ===========================================================================
+
+  /bom/projects/{projectId}/analyze:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Analysis]
+      summary: Запустить анализ сборочной единицы
+      description: |
+        Извлекает структуру изделия (BOM) из CAD-модели проекта.
+        Если BOM уже существует и `force=false`, возвращает существующий.
+      operationId: analyzeBom
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BomAnalyzeRequest'
+      responses:
+        '202':
+          description: Анализ запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          description: Структура изделия не извлечена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /bom/analyses/{analysisId}:
+    parameters:
+      - name: analysisId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Analysis]
+      summary: Получить статус анализа
+      operationId: getAnalysis
+      responses:
+        '200':
+          description: Результат анализа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Дерево состава изделия
+  # ===========================================================================
+
+  /bom/projects/{projectId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Bom]
+      summary: Получить дерево BOM по проекту
+      operationId: getBomByProject
+      responses:
+        '200':
+          description: Дерево состава изделия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomTree'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bom/{bomId}/tree:
+    parameters:
+      - $ref: '#/components/parameters/BomId'
+    get:
+      tags: [Bom]
+      summary: Получить дерево BOM по ID
+      operationId: getBomTree
+      responses:
+        '200':
+          description: Дерево состава изделия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomTree'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bom/{bomId}/summary:
+    parameters:
+      - $ref: '#/components/parameters/BomId'
+    get:
+      tags: [Bom]
+      summary: Сводка по BOM
+      operationId: getBomSummary
+      responses:
+        '200':
+          description: Сводка (позиции, типы, уровни)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Позиции BOM
+  # ===========================================================================
+
+  /bom/{bomId}/items:
+    parameters:
+      - $ref: '#/components/parameters/BomId'
+    get:
+      tags: [Items]
+      summary: Уплощённый список позиций
+      operationId: getBomItems
+      parameters:
+        - name: type
+          in: query
+          description: Фильтр по типу позиции
+          schema:
+            $ref: '#/components/schemas/BomItemType'
+      responses:
+        '200':
+          description: Список позиций
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BomItemDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Items]
+      summary: Обновить набор позиций (ручная корректировка)
+      operationId: updateBomItems
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BomUpdateRequest'
+      responses:
+        '200':
+          description: BOM обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomTree'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [Items]
+      summary: Добавить позицию
+      operationId: addBomItem
+      parameters:
+        - name: parentId
+          in: query
+          description: ID родительской позиции (для вложенности)
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BomItemDto'
+      responses:
+        '201':
+          description: Позиция создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomItemDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /bom/{bomId}/items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/BomId'
+      - $ref: '#/components/parameters/ItemId'
+    delete:
+      tags: [Items]
+      summary: Удалить позицию (с потомками)
+      operationId: deleteBomItem
+      responses:
+        '204':
+          description: Позиция удалена
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Связи и сопряжения
+  # ===========================================================================
+
+  /bom/{bomId}/connections:
+    parameters:
+      - $ref: '#/components/parameters/BomId'
+    get:
+      tags: [Connections]
+      summary: Получить связи и сопряжения
+      description: Используется для проектирования ТП сборки
+      operationId: getConnections
+      responses:
+        '200':
+          description: Список связей
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AssemblyConnectionDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Последовательность сборки
+  # ===========================================================================
+
+  /bom/{bomId}/assembly-sequence:
+    parameters:
+      - $ref: '#/components/parameters/BomId'
+    get:
+      tags: [Sequence]
+      summary: Рекомендуемая последовательность установки
+      description: На основе графа связей (топологическая сортировка)
+      operationId: getAssemblySequence
+      responses:
+        '200':
+          description: Последовательность установки
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BomItemDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Спецификация
+  # ===========================================================================
+
+  /bom/{bomId}/specification:
+    parameters:
+      - $ref: '#/components/parameters/BomId'
+    get:
+      tags: [Specification]
+      summary: Спецификация по ГОСТ 2.106
+      operationId: getSpecification
+      responses:
+        '200':
+          description: Спецификация с разделами
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpecificationDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Экспорт
+  # ===========================================================================
+
+  /bom/{bomId}/export:
+    parameters:
+      - $ref: '#/components/parameters/BomId'
+    post:
+      tags: [Export]
+      summary: Экспорт BOM
+      operationId: exportBom
+      parameters:
+        - name: format
+          in: query
+          description: Формат экспорта
+          schema:
+            type: string
+            enum: [EXCEL, CSV, PDF]
+            default: EXCEL
+      responses:
+        '200':
+          description: Экспорт выполнен, возвращён URI файла
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ===========================================================================
+  # Служебные
+  # ===========================================================================
+
+  /bom/health:
+    get:
+      tags: [Bom]
+      summary: Проверка доступности сервиса
+      operationId: bomHealth
+      security: []
+      responses:
+        '200':
+          description: Сервис доступен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  service:
+                    type: string
+                    example: bom-service
+                  timestamp:
+                    type: string
+                    format: date-time
+
+# =============================================================================
+# Компоненты
+# =============================================================================
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор проекта
+
+    BomId:
+      name: bomId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор сборки (BOM)
+
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор позиции BOM
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+
+    # ---- Общие ------------------------------------------------------------
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: BOM_ERROR
+        code:
+          type: string
+          example: BOM_NOT_FOUND
+        message:
+          type: string
+        context:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+
+    # ---- ENUM-типы -------------------------------------------------------
+
+    BomItemType:
+      type: string
+      enum: [PART, ASSEMBLY, STANDARD, FASTENER, MATERIAL]
+
+    AssemblyConnectionType:
+      type: string
+      enum:
+        - FIXED
+        - ROTATIONAL
+        - SLIDING
+        - WELDED
+        - THREADED
+        - GLUED
+        - PRESSED
+        - RIVETED
+        - PINNED
+        - KEYED
+        - SPLINED
+        - OTHER
+
+    # ---- Анализ ---------------------------------------------------------
+
+    BomAnalyzeRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        geometryId:
+          type: string
+          maxLength: 64
+          description: Идентификатор CAD-геометрии
+        cadSystem:
+          type: string
+          enum: [SIEMENS, DASSAULT, T_FLEX, KOMPAS, STEP, JT, PARASOLID]
+        force:
+          type: boolean
+          default: false
+          description: Принудительно переанализировать BOM
+
+    BomResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        assemblyId:
+          type: string
+          format: uuid
+        bomId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED, ALREADY_EXISTS]
+        positionsCount:
+          type: integer
+        connectionsCount:
+          type: integer
+        message:
+          type: string
+
+    # ---- BOM дерево ------------------------------------------------------
+
+    BomTree:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        rootAssemblyId:
+          type: string
+          format: uuid
+        designation:
+          type: string
+        name:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BomItemDto'
+        totalPositions:
+          type: integer
+        maxDepth:
+          type: integer
+
+    BomItemDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        assemblyId:
+          type: string
+          format: uuid
+        parentId:
+          type: string
+          format: uuid
+        order:
+          type: integer
+        level:
+          type: integer
+        position:
+          type: string
+          maxLength: 32
+          example: "1"
+        designation:
+          type: string
+          maxLength: 128
+          example: КР-001.01
+        name:
+          type: string
+          maxLength: 255
+        quantity:
+          type: integer
+          minimum: 1
+        unit:
+          type: string
+          maxLength: 32
+          example: шт
+        material:
+          type: string
+          maxLength: 128
+        type:
+          $ref: '#/components/schemas/BomItemType'
+        geometryId:
+          type: string
+          maxLength: 64
+        cadSystem:
+          type: string
+        massKg:
+          type: number
+          format: double
+        note:
+          type: string
+          maxLength: 1000
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/BomItemDto'
+        parameters:
+          type: object
+          additionalProperties: true
+      required: [name, type, quantity]
+
+    BomUpdateRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BomItemDto'
+      required: [items]
+
+    BomSummary:
+      type: object
+      properties:
+        bomId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        designation:
+          type: string
+        totalPositions:
+          type: integer
+        parts:
+          type: integer
+        assemblies:
+          type: integer
+        standard:
+          type: integer
+        materials:
+          type: integer
+        fasteners:
+          type: integer
+        maxDepth:
+          type: integer
+        connections:
+          type: integer
+        version:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ---- Связи и сопряжения ---------------------------------------------
+
+    AssemblyConnectionDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        assemblyId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/AssemblyConnectionType'
+        name:
+          type: string
+        description:
+          type: string
+        part1Id:
+          type: string
+          format: uuid
+        part2Id:
+          type: string
+          format: uuid
+        part1Designation:
+          type: string
+        part2Designation:
+          type: string
+        order:
+          type: integer
+        needsTool:
+          type: boolean
+        needsFixture:
+          type: boolean
+        needsControl:
+          type: boolean
+        toolType:
+          type: string
+          maxLength: 64
+        fixtureType:
+          type: string
+          maxLength: 64
+        diameterMm:
+          type: number
+          format: double
+        clearanceMm:
+          type: number
+          format: double
+        interferenceMm:
+          type: number
+          format: double
+        torqueNm:
+          type: number
+          format: double
+        pressForceKn:
+          type: number
+          format: double
+        weldLengthMm:
+          type: number
+          format: double
+        weldLegMm:
+          type: number
+          format: double
+        parameters:
+          type: object
+          additionalProperties: true
+        note:
+          type: string
+          maxLength: 1000
+      required: [type, part1Id, part2Id]
+
+    # ---- Спецификация ----------------------------------------------------
+
+    SpecificationDto:
+      type: object
+      properties:
+        bomId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        designation:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpecificationSection'
+
+    SpecificationSection:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Документация
+        order:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BomItemDto'
+
+    # ---- Экспорт ---------------------------------------------------------
+
+    ExportResult:
+      type: object
+      properties:
+        bomId:
+          type: string
+          format: uuid
+        format:
+          type: string
+          enum: [EXCEL, CSV, PDF]
+        fileUri:
+          type: string
+          description: Внутренний URI файла в MinIO/S3
+        message:
+          type: string
+
+# =============================================================================
+# Теги для группировки в Swagger UI
+# =============================================================================
+
+x-tagGroups:
+  - name: Анализ
+    tags: [Analysis]
+  - name: BOM
+    tags: [Bom, Items]
+  - name: Сборка
+    tags: [Connections, Sequence]
+  - name: Документы
+    tags: [Specification, Export]

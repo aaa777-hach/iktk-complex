@@ -1,0 +1,1072 @@
+openapi: 3.0.3
+
+info:
+  title: ИКТК — Recommendation Service API
+  description: |
+    **Сервис рекомендаций ИКТК**
+
+    REST API сервиса `recommendation-service`, отвечающего за:
+    - gap-анализ: сопоставление требований ТП с парком оборудования;
+    - формирование рекомендаций при дефиците (альтернатива, докупка,
+      аренда, аутсорс, корректировка ТП);
+    - скоринг вариантов по стоимости, срокам и качеству;
+    - поиск в каталоге внешнего оборудования;
+    - варианты аутсорса и выбор подрядчика;
+    - сводки по рекомендациям проекта.
+
+    **Аутентификация:** JWT Bearer (`Authorization: Bearer <token>`).
+
+    **Трассировка:** заголовки `X-Request-Id`, `X-Correlation-Id`.
+
+    **Ошибки:** единый формат с полями `error`, `code`, `message`, `context`, `timestamp`.
+  version: 1.0.0
+  contact:
+    name: ИКТК Team
+    email: support@example.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://iktk.example.com/api/v1
+    description: Production
+  - url: https://iktk-stage.example.com/api/v1
+    description: Staging
+  - url: http://localhost:8080/api/v1
+    description: Локальная разработка
+
+tags:
+  - name: GapAnalysis
+    description: Gap-анализ дефицита оборудования
+  - name: Recommendation
+    description: Рекомендации по закрытию дефицита
+  - name: Decision
+    description: Принятие решений (принять, отклонить, корректировать)
+  - name: Outsourcing
+    description: Варианты аутсорса
+  - name: VendorCatalog
+    description: Каталог внешнего оборудования
+
+security:
+  - BearerAuth: []
+
+# =============================================================================
+# Пути
+# =============================================================================
+paths:
+
+  # ===========================================================================
+  # Gap-анализ
+  # ===========================================================================
+
+  /recommendations/projects/{projectId}/gap-analysis:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [GapAnalysis]
+      summary: Запустить gap-анализ по проекту
+      description: |
+        Сопоставляет требования спроектированных ТП с парком оборудования
+        и выявляет дефицит. При необходимости автоматически формирует
+        рекомендации.
+      operationId: runGapAnalysis
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GapAnalysisRequest'
+      responses:
+        '202':
+          description: Gap-анализ запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GapAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          description: Ошибка gap-анализа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    get:
+      tags: [GapAnalysis]
+      summary: Получить последний gap-анализ по проекту
+      operationId: getLatestGapAnalysis
+      responses:
+        '200':
+          description: Результаты gap-анализа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GapAnalysisResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/gap-analysis/{analysisId}:
+    parameters:
+      - name: analysisId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [GapAnalysis]
+      summary: Получить результаты gap-анализа по ID
+      operationId: getGapAnalysis
+      responses:
+        '200':
+          description: Результаты gap-анализа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GapAnalysisResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Рекомендации
+  # ===========================================================================
+
+  /recommendations/projects/{projectId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Recommendation]
+      summary: Список рекомендаций по проекту
+      operationId: getRecommendationsByProject
+      parameters:
+        - name: type
+          in: query
+          description: Фильтр по типу рекомендации
+          schema:
+            $ref: '#/components/schemas/RecommendationType'
+        - name: status
+          in: query
+          description: Фильтр по статусу
+          schema:
+            $ref: '#/components/schemas/RecommendationStatus'
+      responses:
+        '200':
+          description: Список рекомендаций (по убыванию скора)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EquipmentRecommendationDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /recommendations/gaps/{gapId}:
+    parameters:
+      - name: gapId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Recommendation]
+      summary: Рекомендации по дефициту
+      operationId: getRecommendationsByGap
+      responses:
+        '200':
+          description: Список рекомендаций по дефициту
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EquipmentRecommendationDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/{recommendationId}:
+    parameters:
+      - $ref: '#/components/parameters/RecommendationId'
+    get:
+      tags: [Recommendation]
+      summary: Рекомендация по ID
+      operationId: getRecommendation
+      responses:
+        '200':
+          description: Рекомендация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentRecommendationDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Принятие решений
+  # ===========================================================================
+
+  /recommendations/{recommendationId}/accept:
+    parameters:
+      - $ref: '#/components/parameters/RecommendationId'
+    post:
+      tags: [Decision]
+      summary: Принять рекомендацию
+      description: |
+        Назначает рекомендованное оборудование и продолжает проект
+        (переход к `ASSEMBLY_PROCESS_PLANNING`).
+      operationId: acceptRecommendation
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Рекомендация принята
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Рекомендация уже принята
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /recommendations/{recommendationId}/reject:
+    parameters:
+      - $ref: '#/components/parameters/RecommendationId'
+    post:
+      tags: [Decision]
+      summary: Отклонить рекомендацию
+      operationId: rejectRecommendation
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Рекомендация отклонена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/{recommendationId}/adjust:
+    parameters:
+      - $ref: '#/components/parameters/RecommendationId'
+    post:
+      tags: [Decision]
+      summary: Скорректировать ТП под имеющееся оборудование
+      description: Возвращает проект к состоянию `EQUIPMENT_MATCHING`
+      operationId: adjustProcess
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: ТП будет скорректирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+
+  /recommendations/{recommendationId}/purchase:
+    parameters:
+      - $ref: '#/components/parameters/RecommendationId'
+    post:
+      tags: [Decision]
+      summary: Зафиксировать докупку/аренду
+      operationId: purchaseEquipment
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendorId:
+                  type: string
+                  format: uuid
+                comment:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Решение зафиксировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+
+  /recommendations/{recommendationId}/outsource:
+    parameters:
+      - $ref: '#/components/parameters/RecommendationId'
+    post:
+      tags: [Decision]
+      summary: Выбрать аутсорс для операции
+      operationId: selectOutsourcing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contractor:
+                  type: string
+                  maxLength: 255
+                optionId:
+                  type: string
+                  format: uuid
+              required: [contractor]
+      responses:
+        '200':
+          description: Аутсорс выбран
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+
+  # ===========================================================================
+  # Аутсорс
+  # ===========================================================================
+
+  /recommendations/projects/{projectId}/outsourcing-options:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Outsourcing]
+      summary: Варианты аутсорса по проекту
+      operationId: getOutsourcingOptionsByProject
+      responses:
+        '200':
+          description: Список вариантов аутсорса
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutsourcingOptionDto'
+
+  /recommendations/gaps/{gapId}/outsourcing-options:
+    parameters:
+      - name: gapId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Outsourcing]
+      summary: Варианты аутсорса по дефициту
+      operationId: getOutsourcingOptionsByGap
+      responses:
+        '200':
+          description: Список вариантов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutsourcingOptionDto'
+
+  /recommendations/outsourcing-options/{optionId}/select:
+    parameters:
+      - name: optionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [Outsourcing]
+      summary: Выбрать подрядчика
+      operationId: selectOutsourcingOption
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Подрядчик выбран
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutsourcingOptionDto'
+
+  # ===========================================================================
+  # Каталог внешнего оборудования
+  # ===========================================================================
+
+  /recommendations/vendor-catalog:
+    get:
+      tags: [VendorCatalog]
+      summary: Поиск в каталоге внешнего оборудования
+      operationId: searchVendorCatalog
+      parameters:
+        - name: equipmentType
+          in: query
+          description: Тип оборудования
+          schema:
+            type: string
+            maxLength: 64
+        - name: maxCost
+          in: query
+          description: Максимальная стоимость (руб.)
+          schema:
+            type: number
+            format: double
+        - name: maxLeadTimeDays
+          in: query
+          description: Максимальный срок поставки (дни)
+          schema:
+            type: integer
+        - name: search
+          in: query
+          description: Поиск по наименованию
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        '200':
+          description: Список записей каталога
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VendorCatalogDto'
+
+  /recommendations/vendor-catalog/{vendorId}:
+    parameters:
+      - name: vendorId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [VendorCatalog]
+      summary: Запись каталога по ID
+      operationId: getVendorCatalogItem
+      responses:
+        '200':
+          description: Запись каталога
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorCatalogDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Сводки
+  # ===========================================================================
+
+  /recommendations/projects/{projectId}/summary:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Recommendation]
+      summary: Сводка по рекомендациям проекта
+      operationId: getRecommendationsSummary
+      responses:
+        '200':
+          description: Сводка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationsSummary'
+
+  # ===========================================================================
+  # Служебные
+  # ===========================================================================
+
+  /recommendations/health:
+    get:
+      tags: [Recommendation]
+      summary: Проверка доступности сервиса
+      operationId: recommendationHealth
+      security: []
+      responses:
+        '200':
+          description: Сервис доступен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  service:
+                    type: string
+                    example: recommendation-service
+                  timestamp:
+                    type: string
+                    format: date-time
+
+# =============================================================================
+# Компоненты
+# =============================================================================
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор проекта
+
+    RecommendationId:
+      name: recommendationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор рекомендации
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+
+    # ---- Общие ------------------------------------------------------------
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: RECOMMENDATION_ERROR
+        code:
+          type: string
+          example: RECOMMENDATION_NOT_FOUND
+        message:
+          type: string
+        context:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+
+    # ---- ENUM-типы -------------------------------------------------------
+
+    RecommendationType:
+      type: string
+      enum:
+        - ALTERNATIVE
+        - PURCHASE
+        - RENT
+        - OUTSOURCE
+        - ADJUST_PROCESS
+
+    RecommendationStatus:
+      type: string
+      enum:
+        - PENDING
+        - ACCEPTED
+        - REJECTED
+
+    GapSeverity:
+      type: string
+      enum:
+        - CRITICAL
+        - MAJOR
+        - MINOR
+
+    GapStatus:
+      type: string
+      enum:
+        - RUNNING
+        - COMPLETED
+        - FAILED
+
+    GapStrategy:
+      type: string
+      enum:
+        - STRICT
+        - FLEXIBLE
+        - HYBRID
+
+    OutsourcingType:
+      type: string
+      enum:
+        - CONTRACTOR
+        - PARTNER_PLANT
+        - RENTAL
+        - COOPERATION
+
+    OutsourcingStatus:
+      type: string
+      enum:
+        - PENDING
+        - SELECTED
+        - REJECTED
+
+    VendorSource:
+      type: string
+      enum:
+        - MANUAL
+        - IMPORT
+        - API
+
+    # ---- Gap-анализ ------------------------------------------------------
+
+    GapAnalysisRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        strategy:
+          $ref: '#/components/schemas/GapStrategy'
+        requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentRequirementDto'
+      required: [projectId]
+
+    GapAnalysisResponse:
+      type: object
+      properties:
+        analysisId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        strategy:
+          $ref: '#/components/schemas/GapStrategy'
+        status:
+          $ref: '#/components/schemas/GapStatus'
+        gapsCount:
+          type: integer
+        recommendationsCount:
+          type: integer
+        gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/GapDto'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        error:
+          type: string
+
+    GapDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        analysisId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        processId:
+          type: string
+          format: uuid
+        stageId:
+          type: string
+          format: uuid
+        operationId:
+          type: string
+        operationType:
+          type: string
+          maxLength: 64
+        requiredAccuracy:
+          type: string
+          maxLength: 32
+        maxDimensions:
+          type: string
+          maxLength: 64
+        material:
+          type: string
+          maxLength: 128
+        requiredPowerKw:
+          type: number
+          format: double
+        requiredForceKn:
+          type: number
+          format: double
+        requiredCnc:
+          type: boolean
+        gapReason:
+          type: string
+        severity:
+          $ref: '#/components/schemas/GapSeverity'
+        strategy:
+          $ref: '#/components/schemas/GapStrategy'
+        createdAt:
+          type: string
+          format: date-time
+
+    EquipmentRequirementDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        processId:
+          type: string
+          format: uuid
+        stageId:
+          type: string
+          format: uuid
+        operationId:
+          type: string
+        operationType:
+          type: string
+          maxLength: 64
+        requiredEquipmentType:
+          type: string
+          maxLength: 64
+        requiredAccuracy:
+          type: string
+          maxLength: 32
+        maxDimensions:
+          type: string
+          maxLength: 64
+        minDimensions:
+          type: string
+          maxLength: 64
+        material:
+          type: string
+          maxLength: 128
+        requiredPowerKw:
+          type: number
+          format: double
+        requiredForceKn:
+          type: number
+          format: double
+        requiredCnc:
+          type: boolean
+        requiredAxes:
+          type: integer
+        requiredTemperatureC:
+          type: number
+          format: double
+        quantity:
+          type: integer
+          minimum: 1
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 10
+        notes:
+          type: string
+          maxLength: 1000
+      required: [operationType]
+
+    # ---- Рекомендации ----------------------------------------------------
+
+    EquipmentRecommendationDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        gapId:
+          type: string
+          format: uuid
+        analysisId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/RecommendationType'
+        status:
+          $ref: '#/components/schemas/RecommendationStatus'
+        equipmentId:
+          type: string
+          format: uuid
+        vendorId:
+          type: string
+          format: uuid
+        rationale:
+          type: string
+          maxLength: 2000
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        estimatedCost:
+          type: number
+          format: double
+        leadTimeDays:
+          type: integer
+        acceptedBy:
+          type: string
+        acceptedAt:
+          type: string
+          format: date-time
+        parameters:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RecommendationResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        recommendationId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/RecommendationStatus'
+        state:
+          type: string
+          description: Состояние оркестратора после решения
+          example: ASSEMBLY_PROCESS_PLANNING
+        message:
+          type: string
+
+    RecommendationsSummary:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        total:
+          type: integer
+        pending:
+          type: integer
+        accepted:
+          type: integer
+        rejected:
+          type: integer
+        byType:
+          type: object
+          additionalProperties:
+            type: integer
+
+    # ---- Аутсорс ---------------------------------------------------------
+
+    OutsourcingOptionDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        gapId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        analysisId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/OutsourcingType'
+        contractor:
+          type: string
+          maxLength: 255
+        contractorContact:
+          type: string
+          maxLength: 255
+        contractorRegion:
+          type: string
+          maxLength: 64
+        operation:
+          type: string
+          maxLength: 128
+        cost:
+          type: number
+          format: double
+        leadTimeDays:
+          type: integer
+        qualityRating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        status:
+          $ref: '#/components/schemas/OutsourcingStatus'
+        comment:
+          type: string
+          maxLength: 1000
+        selectedBy:
+          type: string
+        selectedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ---- Каталог внешнего оборудования -----------------------------------
+
+    VendorCatalogDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        externalId:
+          type: string
+          maxLength: 128
+        name:
+          type: string
+          maxLength: 255
+        manufacturer:
+          type: string
+          maxLength: 128
+        model:
+          type: string
+          maxLength: 128
+        equipmentType:
+          type: string
+          maxLength: 64
+        description:
+          type: string
+          maxLength: 2000
+        country:
+          type: string
+          maxLength: 64
+        cncCapable:
+          type: boolean
+        maxDimensions:
+          type: string
+          maxLength: 64
+        powerKw:
+          type: number
+          format: double
+        forceKn:
+          type: number
+          format: double
+        cost:
+          type: number
+          format: double
+        rentalCostPerDay:
+          type: number
+          format: double
+        leadTimeDays:
+          type: integer
+        warrantyMonths:
+          type: integer
+        terms:
+          type: string
+          maxLength: 1000
+        vendorName:
+          type: string
+          maxLength: 255
+        vendorContact:
+          type: string
+          maxLength: 255
+        vendorRegion:
+          type: string
+          maxLength: 64
+        available:
+          type: boolean
+        source:
+          $ref: '#/components/schemas/VendorSource'
+        specs:
+          type: object
+          additionalProperties: true
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+# =============================================================================
+# Теги для группировки в Swagger UI
+# =============================================================================
+
+x-tagGroups:
+  - name: Анализ
+    tags: [GapAnalysis]
+  - name: Рекомендации
+    tags: [Recommendation, Decision]
+  - name: Аутсорс
+    tags: [Outsourcing]
+  - name: Каталог
+    tags: [VendorCatalog]

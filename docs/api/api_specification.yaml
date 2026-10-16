@@ -1,0 +1,1810 @@
+openapi: 3.0.3
+
+info:
+  title: ИКТК — API Specification
+  description: |
+    **Интегрированный конструкторско-технологический комплекс (ИКТК)**
+
+    Единая OpenAPI-спецификация всех публичных API комплекса, доступных
+    через API Gateway. Спецификация включает:
+
+    - **Auth** — аутентификация, RBAC/ABAC, аудит;
+    - **Orchestrator** — управление жизненным циклом ТПП, точки контроля;
+    - **Equipment** — реестр оборудования, gap-анализ;
+    - **BOM** — анализ сборочных единиц, состав изделия;
+    - **Assembly** — ТП сборки, оснастка;
+    - **Recommendation** — рекомендации, аутсорс;
+    - **Processes** — ТП, этапы, граф ТП, нормы, УП;
+    - **Files** — загрузка/выгрузка файлов через presigned URL.
+
+    **Аутентификация:** JWT Bearer (`Authorization: Bearer <token>`).
+
+    **Трассировка:** заголовки `X-Request-Id`, `X-Correlation-Id`.
+
+    **Ошибки:** единый формат с полями `error`, `code`, `message`, `context`, `requestId`.
+  version: 1.0.0
+  contact:
+    name: ИКТК Team
+    email: support@example.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://iktk.example.com/api
+    description: Production
+  - url: https://iktk-stage.example.com/api
+    description: Staging
+  - url: http://localhost:8080/api
+    description: Локальная разработка
+
+tags:
+  - name: Auth
+    description: Аутентификация, авторизация, аудит
+  - name: Orchestrator
+    description: Оркестратор — управление жизненным циклом ТПП
+  - name: Equipment
+    description: Реестр оборудования и gap-анализ
+  - name: BOM
+    description: Анализ сборочных единиц, состав изделия
+  - name: Assembly
+    description: ТП сборки, оснастка
+  - name: Recommendation
+    description: Рекомендации, аутсорс
+  - name: Processes
+    description: ТП, этапы, граф, нормы, УП
+  - name: Files
+    description: Загрузка и выгрузка файлов
+
+security:
+  - BearerAuth: []
+
+# =============================================================================
+# Пути
+# =============================================================================
+paths:
+
+  # ===========================================================================
+  # AUTH
+  # ===========================================================================
+
+  /v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход в систему
+      description: Аутентификация по логину/паролю, выдача access/refresh токенов.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновить access-токен
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Новая пара токенов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход из системы
+      description: Отзывает текущий access-токен и связанный refresh-токен.
+      operationId: logout
+      security: []
+      responses:
+        '200':
+          description: Токен отозван
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/introspect:
+    post:
+      tags: [Auth]
+      summary: Проверить токен
+      operationId: introspect
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+              required: [token]
+      responses:
+        '200':
+          description: Статус токена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntrospectResponse'
+
+  /v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Информация о текущем пользователе
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Сменить пароль
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Пароль изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ===========================================================================
+  # ORCHESTRATOR
+  # ===========================================================================
+
+  /v1/orchestrator/projects:
+    post:
+      tags: [Orchestrator]
+      summary: Создать проект и запустить оркестрацию
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrchestrationRequest'
+      responses:
+        '201':
+          description: Проект создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /v1/orchestrator/projects/{projectId}/run:
+    post:
+      tags: [Orchestrator]
+      summary: Запустить/продолжить оркестрацию
+      operationId: runOrchestration
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Оркестрация запущена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /v1/orchestrator/projects/{projectId}/state:
+    get:
+      tags: [Orchestrator]
+      summary: Текущее состояние проекта
+      operationId: getProjectState
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Состояние проекта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/orchestrator/projects/{projectId}/summary:
+    get:
+      tags: [Orchestrator]
+      summary: Сводка по проекту
+      operationId: getProjectSummary
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Сводка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/orchestrator/projects/{projectId}/history:
+    get:
+      tags: [Orchestrator]
+      summary: История решений оркестратора
+      operationId: getProjectHistory
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: История решений
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DecisionLogEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/orchestrator/projects/{projectId}/approve:
+    post:
+      tags: [Orchestrator]
+      summary: Подтвердить текущий этап (точка контроля)
+      operationId: approveStage
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Этап подтверждён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /v1/orchestrator/projects/{projectId}/events:
+    post:
+      tags: [Orchestrator]
+      summary: Отправить событие в конечный автомат
+      operationId: sendEvent
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: event
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/ProjectEvent'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Событие принято
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /v1/orchestrator/projects/{projectId}/recommendations/{recommendationId}/accept:
+    post:
+      tags: [Orchestrator]
+      summary: Принять рекомендацию по оборудованию
+      operationId: acceptRecommendation
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/RecommendationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Рекомендация принята
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /v1/orchestrator/projects/{projectId}/recommendations/{recommendationId}/adjust:
+    post:
+      tags: [Orchestrator]
+      summary: Скорректировать ТП под имеющееся оборудование
+      operationId: adjustProcess
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/RecommendationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: ТП скорректирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+
+  /v1/orchestrator/projects/{projectId}/recommendations/{recommendationId}/outsource:
+    post:
+      tags: [Orchestrator]
+      summary: Выбрать аутсорс для операции
+      operationId: selectOutsourcing
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/RecommendationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Аутсорс выбран
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+
+  /v1/orchestrator/projects/{projectId}/rollback:
+    post:
+      tags: [Orchestrator]
+      summary: Откатить проект к версии
+      operationId: rollbackProject
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: version
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Откат выполнен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # EQUIPMENT
+  # ===========================================================================
+
+  /v1/equipment:
+    get:
+      tags: [Equipment]
+      summary: Список оборудования
+      operationId: listEquipment
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Список оборудования
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentPage'
+    post:
+      tags: [Equipment]
+      summary: Добавить оборудование
+      operationId: createEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Equipment'
+      responses:
+        '201':
+          description: Оборудование добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Equipment'
+
+  /v1/equipment/{equipmentId}:
+    get:
+      tags: [Equipment]
+      summary: Получить оборудование по ID
+      operationId: getEquipment
+      parameters:
+        - $ref: '#/components/parameters/EquipmentId'
+      responses:
+        '200':
+          description: Оборудование
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Equipment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Equipment]
+      summary: Обновить оборудование
+      operationId: updateEquipment
+      parameters:
+        - $ref: '#/components/parameters/EquipmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Equipment'
+      responses:
+        '200':
+          description: Оборудование обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Equipment'
+    delete:
+      tags: [Equipment]
+      summary: Удалить оборудование
+      operationId: deleteEquipment
+      parameters:
+        - $ref: '#/components/parameters/EquipmentId'
+      responses:
+        '204':
+          description: Оборудование удалено
+
+  /v1/equipment/{equipmentId}/capabilities:
+    get:
+      tags: [Equipment]
+      summary: Возможности оборудования
+      operationId: getEquipmentCapabilities
+      parameters:
+        - $ref: '#/components/parameters/EquipmentId'
+      responses:
+        '200':
+          description: Возможности
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EquipmentCapability'
+
+  /v1/equipment/import:
+    post:
+      tags: [Equipment]
+      summary: Массовый импорт оборудования
+      operationId: importEquipment
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '202':
+          description: Импорт запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationStatus'
+
+  /v1/equipment/gap-analysis:
+    post:
+      tags: [Equipment]
+      summary: Запустить gap-анализ по проекту
+      operationId: runGapAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectId:
+                  type: string
+                  format: uuid
+              required: [projectId]
+      responses:
+        '202':
+          description: Gap-анализ запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GapAnalysisResponse'
+
+  # ===========================================================================
+  # BOM
+  # ===========================================================================
+
+  /v1/bom/projects/{projectId}/analyze:
+    post:
+      tags: [BOM]
+      summary: Анализ сборочной единицы
+      operationId: analyzeBom
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                geometryId:
+                  type: string
+      responses:
+        '202':
+          description: Анализ запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomTree'
+
+  /v1/bom/projects/{projectId}:
+    get:
+      tags: [BOM]
+      summary: Получить BOM проекта
+      operationId: getBom
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Дерево состава изделия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomTree'
+
+  /v1/bom/{bomId}/tree:
+    get:
+      tags: [BOM]
+      summary: Дерево BOM по ID
+      operationId: getBomTree
+      parameters:
+        - name: bomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Дерево BOM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomTree'
+
+  /v1/bom/{bomId}/items:
+    put:
+      tags: [BOM]
+      summary: Ручная корректировка BOM
+      operationId: updateBomItems
+      parameters:
+        - name: bomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/BomItem'
+      responses:
+        '200':
+          description: BOM обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BomTree'
+
+  # ===========================================================================
+  # ASSEMBLY
+  # ===========================================================================
+
+  /v1/assembly/projects/{projectId}/process:
+    post:
+      tags: [Assembly]
+      summary: Запустить проектирование ТП сборки
+      operationId: designAssemblyProcess
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '202':
+          description: Проектирование запущено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssemblyProcess'
+    get:
+      tags: [Assembly]
+      summary: Получить ТП сборки
+      operationId: getAssemblyProcess
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: ТП сборки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssemblyProcess'
+
+  # ===========================================================================
+  # RECOMMENDATION
+  # ===========================================================================
+
+  /v1/recommendations/projects/{projectId}:
+    get:
+      tags: [Recommendation]
+      summary: Получить рекомендации по проекту
+      operationId: getRecommendations
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Список рекомендаций
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EquipmentRecommendation'
+
+  /v1/recommendations/projects/{projectId}/gap-analysis:
+    post:
+      tags: [Recommendation]
+      summary: Запустить gap-анализ
+      operationId: runRecommendationGapAnalysis
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '202':
+          description: Gap-анализ запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GapAnalysisResponse'
+
+  /v1/recommendations/{recommendationId}/accept:
+    post:
+      tags: [Recommendation]
+      summary: Принять рекомендацию
+      operationId: acceptRecommendationDirect
+      parameters:
+        - $ref: '#/components/parameters/RecommendationId'
+      responses:
+        '200':
+          description: Рекомендация принята
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipmentRecommendation'
+
+  /v1/recommendations/projects/{projectId}/outsourcing-options:
+    get:
+      tags: [Recommendation]
+      summary: Варианты аутсорса
+      operationId: getOutsourcingOptions
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Варианты аутсорса
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutsourcingOption'
+
+  # ===========================================================================
+  # PROCESSES
+  # ===========================================================================
+
+  /v1/processes/projects/{projectId}/list:
+    get:
+      tags: [Processes]
+      summary: Список ТП проекта
+      operationId: listProcesses
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Список ТП
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TechnologyProcess'
+
+  /v1/processes/{processId}:
+    get:
+      tags: [Processes]
+      summary: Получить ТП по ID
+      operationId: getProcess
+      parameters:
+        - name: processId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: ТП
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TechnologyProcess'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/processes/projects/{projectId}/graph:
+    get:
+      tags: [Processes]
+      summary: Получить граф ТП проекта
+      operationId: getStageGraph
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Граф ТП
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageGraph'
+    put:
+      tags: [Processes]
+      summary: Обновить граф ТП проекта
+      operationId: updateStageGraph
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageGraph'
+      responses:
+        '200':
+          description: Граф обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageGraph'
+
+  /v1/processes/projects/{projectId}/norms:
+    get:
+      tags: [Processes]
+      summary: Нормы времени и материалов
+      operationId: getNorms
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Нормы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NormsResponse'
+
+  /v1/processes/projects/{projectId}/cnc-programs:
+    get:
+      tags: [Processes]
+      summary: Программы ЧПУ проекта
+      operationId: listCncPrograms
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Список УП
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CncProgram'
+
+  /v1/processes/projects/{projectId}/cnc-programs/{programId}:
+    get:
+      tags: [Processes]
+      summary: Получить УП
+      operationId: getCncProgram
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: programId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: УП
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CncProgram'
+
+  # ===========================================================================
+  # FILES
+  # ===========================================================================
+
+  /v1/files/upload-url:
+    post:
+      tags: [Files]
+      summary: Получить presigned URL для загрузки
+      operationId: getUploadUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectId:
+                  type: string
+                  format: uuid
+                category:
+                  type: string
+                  enum: [geometry, bom, specification, drawing, tooling, cnc, docs]
+                filename:
+                  type: string
+              required: [projectId, category, filename]
+      responses:
+        '200':
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignedUrl'
+
+  /v1/files/{fileId}/download-url:
+    get:
+      tags: [Files]
+      summary: Получить presigned URL для скачивания
+      operationId: getDownloadUrl
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignedUrl'
+
+# =============================================================================
+# Компоненты
+# =============================================================================
+components:
+
+  # ---------------------------------------------------------------------------
+  # Безопасность
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access-токен, выданный `/v1/auth/login`.
+
+  # ---------------------------------------------------------------------------
+  # Параметры
+  # ---------------------------------------------------------------------------
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор проекта
+
+    RecommendationId:
+      name: recommendationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Идентификатор рекомендации
+
+    EquipmentId:
+      name: equipmentId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Идентификатор оборудования
+
+  # ---------------------------------------------------------------------------
+  # Ответы
+  # ---------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Не авторизован
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Доступ запрещён
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    UnprocessableEntity:
+      description: Ошибка бизнес-логики (недопустимый переход, событие не принято)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    TooManyRequests:
+      description: Превышен лимит запросов
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  # ---------------------------------------------------------------------------
+  # Схемы
+  # ---------------------------------------------------------------------------
+  schemas:
+
+    # ---- Общие ------------------------------------------------------------
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: ORCHESTRATION_ERROR
+        code:
+          type: string
+          example: PROJECT_NOT_FOUND
+        message:
+          type: string
+          example: Проект не найден
+        context:
+          type: object
+          additionalProperties: true
+          example: { projectId: "8f3e..." }
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    OperationStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          example: OK
+        message:
+          type: string
+        requestId:
+          type: string
+
+    PresignedUrl:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+        objectKey:
+          type: string
+
+    # ---- Auth -------------------------------------------------------------
+
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          maxLength: 128
+        password:
+          type: string
+          format: password
+          maxLength: 128
+      required: [username, password]
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Время жизни access-токена в секундах
+        userInfo:
+          $ref: '#/components/schemas/UserInfo'
+
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+        username:
+          type: string
+
+    RefreshRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+      required: [refreshToken]
+
+    IntrospectResponse:
+      type: object
+      properties:
+        active:
+          type: boolean
+        username:
+          type: string
+        roles:
+          type: string
+        issuer:
+          type: string
+        expiresAt:
+          type: string
+        requestId:
+          type: string
+
+    UserInfo:
+      type: object
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        email:
+          type: string
+          format: email
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [ADMIN, MANAGER, ENGINEER, NORMER, OPERATOR, VIEWER, INTEGRATION]
+        enterpriseCode:
+          type: string
+        departmentCode:
+          type: string
+
+    ChangePasswordRequest:
+      type: object
+      properties:
+        oldPassword:
+          type: string
+          format: password
+        newPassword:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 128
+      required: [oldPassword, newPassword]
+
+    # ---- Orchestrator -----------------------------------------------------
+
+    ProjectState:
+      type: string
+      enum:
+        - PROJECT_INIT
+        - GEOMETRY_INPUT
+        - GEOMETRY_ANALYSIS
+        - ASSEMBLY_ANALYSIS
+        - PART_PROCESS_PLANNING
+        - TOOLING_DESIGN
+        - EQUIPMENT_MATCHING
+        - EQUIPMENT_GAP_RESOLUTION
+        - RECOMMENDATION_REVIEW
+        - ASSEMBLY_PROCESS_PLANNING
+        - NORMING
+        - DOCUMENTATION
+        - TECHNICAL_CONTROL
+        - COMPLETED
+
+    ProjectEvent:
+      type: string
+      enum:
+        - START_GEOMETRY_INPUT
+        - GEOMETRY_UPLOADED
+        - IS_PART
+        - IS_ASSEMBLY
+        - BOM_EXTRACTED
+        - PART_PROCESS_READY
+        - TOOLING_READY
+        - EQUIPMENT_MATCHED
+        - EQUIPMENT_GAP
+        - RECOMMENDATIONS_READY
+        - RECOMMENDATION_ACCEPTED
+        - PROCESS_ADJUSTED
+        - OUTSOURCING_SELECTED
+        - ASSEMBLY_PROCESS_READY
+        - NORMS_READY
+        - DOCUMENTATION_READY
+        - CONTROL_PASSED
+        - CONTROL_REJECTED
+
+    ObjectType:
+      type: string
+      enum: [PART, ASSEMBLY]
+
+    OrchestrationRequest:
+      type: object
+      properties:
+        projectName:
+          type: string
+          maxLength: 255
+          example: Корпус редуктора
+        designation:
+          type: string
+          maxLength: 128
+          example: КР-001
+        description:
+          type: string
+          maxLength: 2000
+        objectType:
+          $ref: '#/components/schemas/ObjectType'
+        enterpriseCode:
+          type: string
+          maxLength: 64
+        requestedBy:
+          type: string
+          maxLength: 128
+        responsibleEngineer:
+          type: string
+          maxLength: 128
+        geometryId:
+          type: string
+        assemblyId:
+          type: string
+        plannedProcessTypes:
+          type: array
+          items:
+            type: string
+        payload:
+          type: object
+          additionalProperties: true
+      required: [projectName]
+
+    OrchestrationResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        projectName:
+          type: string
+        designation:
+          type: string
+        objectType:
+          $ref: '#/components/schemas/ObjectType'
+        state:
+          $ref: '#/components/schemas/ProjectState'
+        stateDisplayName:
+          type: string
+        stateCategory:
+          type: string
+          enum: [AUTOMATIC, POINT_OF_CONTROL, TERMINAL]
+        pointOfControl:
+          type: boolean
+        availableEvents:
+          type: array
+          items:
+            type: string
+        currentStageId:
+          type: string
+        currentStageName:
+          type: string
+        progressPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        completedStages:
+          type: integer
+        totalStages:
+          type: integer
+        technologyProcessId:
+          type: string
+        recommendationId:
+          type: string
+        awaitingUserAction:
+          type: boolean
+        message:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        attributes:
+          type: object
+          additionalProperties: true
+
+    ProjectSummary:
+      allOf:
+        - $ref: '#/components/schemas/OrchestrationResponse'
+        - type: object
+          properties:
+            requestedBy:
+              type: string
+            responsibleEngineer:
+              type: string
+            enterpriseCode:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+            warnings:
+              type: array
+              items:
+                type: string
+
+    DecisionLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+        actor:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+
+    # ---- Equipment --------------------------------------------------------
+
+    Equipment:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        model:
+          type: string
+        inventoryNo:
+          type: string
+        status:
+          type: string
+          enum: [AVAILABLE, BUSY, MAINTENANCE, DECOMMISSIONED]
+        location:
+          type: string
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquipmentCapability'
+        parameters:
+          type: object
+          additionalProperties: true
+
+    EquipmentCapability:
+      type: object
+      properties:
+        equipmentId:
+          type: string
+        operationType:
+          type: string
+        tolerance:
+          type: string
+        maxDimensions:
+          type: string
+        materials:
+          type: array
+          items:
+            type: string
+        powerKw:
+          type: number
+
+    EquipmentPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/Equipment'
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    GapAnalysisResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        analysisId:
+          type: string
+          format: uuid
+        gapsCount:
+          type: integer
+        recommendationsCount:
+          type: integer
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED]
+
+    EquipmentRecommendation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        gapId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [ALTERNATIVE, PURCHASE, RENT, OUTSOURCE, ADJUST_PROCESS]
+        equipmentId:
+          type: string
+        rationale:
+          type: string
+        score:
+          type: number
+          format: float
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+
+    OutsourcingOption:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        gapId:
+          type: string
+          format: uuid
+        contractor:
+          type: string
+        operation:
+          type: string
+        cost:
+          type: number
+        leadTimeDays:
+          type: integer
+
+    # ---- BOM --------------------------------------------------------------
+
+    BomTree:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        rootAssemblyId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BomItem'
+        totalPositions:
+          type: integer
+
+    BomItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        position:
+          type: string
+        designation:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: integer
+        unit:
+          type: string
+        material:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/BomItem'
+
+    # ---- Assembly ---------------------------------------------------------
+
+    AssemblyProcess:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stage'
+        tooling:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    # ---- Processes --------------------------------------------------------
+
+    TechnologyProcess:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        designation:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        projectId:
+          type: string
+          format: uuid
+        objectRef:
+          type: string
+        objectType:
+          $ref: '#/components/schemas/ObjectType'
+        processType:
+          type: string
+        status:
+          type: string
+        productionType:
+          type: string
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stage'
+
+    Stage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        designation:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        order:
+          type: integer
+        operationType:
+          type: string
+        stageKind:
+          type: string
+        equipmentId:
+          type: string
+        toolingId:
+          type: string
+        cncProgramId:
+          type: string
+        timeNormMin:
+          type: number
+        setupTimeMin:
+          type: number
+        requiredAccuracy:
+          type: string
+        requiredPowerKw:
+          type: number
+
+    StageGraph:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageGraphNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/StageGraphEdge'
+
+    StageGraphNode:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        operationType:
+          type: string
+        stageKind:
+          type: string
+        equipmentId:
+          type: string
+        toolingId:
+          type: string
+        cncProgramId:
+          type: string
+        timeNormMin:
+          type: number
+        setupTimeMin:
+          type: number
+        pointOfControl:
+          type: boolean
+        position:
+          type: object
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+
+    StageGraphEdge:
+      type: object
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        target:
+          type: string
+        label:
+          type: string
+        active:
+          type: boolean
+
+    NormsResponse:
+      type: object
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        timeNorms:
+          type: array
+          items:
+            type: object
+            properties:
+              processId:
+                type: string
+              source:
+                type: string
+              batchSize:
+                type: number
+              totalTpz:
+                type: number
+              totalTsh:
+                type: number
+              totalTshK:
+                type: number
+        materialNorms:
+          type: array
+          items:
+            type: object
+            properties:
+              processId:
+                type: string
+              materialCode:
+                type: string
+              blankMass:
+                type: number
+              partMass:
+                type: number
+              normPerPart:
+                type: number
+              materialUtilization:
+                type: number
+
+    CncProgram:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        processId:
+          type: string
+          format: uuid
+        equipmentId:
+          type: string
+        equipmentModel:
+          type: string
+        postprocessor:
+          type: string
+        programName:
+          type: string
+        programUri:
+          type: string
+        lineCount:
+          type: integer
+        byteSize:
+          type: integer
+        valid:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+# =============================================================================
+# Дополнительно: глобальные заголовки и теги
+# =============================================================================
+
+x-request-id:
+  type: string
+  description: Идентификатор запроса для трассировки
+
+x-correlation-id:
+  type: string
+  description: Корреляционный идентификатор (сквозная трассировка)
+
+x-rate-limit:
+  type: string
+  description: Лимит запросов в текущем окне
+
+x-rate-limit-remaining:
+  type: string
+  description: Остаток запросов в текущем окне

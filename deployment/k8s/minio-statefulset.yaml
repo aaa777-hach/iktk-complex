@@ -1,0 +1,536 @@
+# =============================================================================
+# ИКТК: Kubernetes-манифест для MinIO (S3-совместимое объектное хранилище)
+# Путь: deployment/k8s/minio-statefulset.yaml
+# Назначение: развёртывание MinIO для хранения тяжёлых файлов ИКТК
+#             (CAD-модели, BOM, спецификации, УП, документы) с
+#             постоянным хранилищем, мониторингом и защитой.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. Secret (шаблон — заполняется через CI/CD или Sealed Secrets)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-secrets
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: iktk-complex
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: "iktk-minio"
+  MINIO_ROOT_PASSWORD: "CHANGE_ME_STRONG_PASSWORD"
+  # Ключи для сервисов ИКТК (создаются после первого запуска через mc admin user add)
+  IKTK_MINIO_ACCESS_KEY: "iktk-app"
+  IKTK_MINIO_SECRET_KEY: "CHANGE_ME_APP_SECRET"
+  # Ключи для резервного копирования
+  BACKUP_MINIO_ACCESS_KEY: "iktk-backup"
+  BACKUP_MINIO_SECRET_KEY: "CHANGE_ME_BACKUP_SECRET"
+
+---
+# -----------------------------------------------------------------------------
+# 2. ConfigMap — параметры MinIO
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-config
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: iktk-complex
+data:
+  # ---- Общие параметры -----------------------------------------------------
+  MINIO_REGION: "ru-central-1"
+  MINIO_BROWSER: "on"
+  MINIO_PROMETHEUS_AUTH_TYPE: "public"
+  MINIO_UPDATE: "off"
+  TZ: "Europe/Moscow"
+
+  # ---- Параметры производительности ----------------------------------------
+  MINIO_API_REQUESTS_MAX: "10000"
+  MINIO_API_REQUESTS_DEADLINE: "5m"
+
+  # ---- Категории бакетов ИКТК ----------------------------------------------
+  buckets.json: |
+    {
+      "buckets": [
+        {
+          "name": "iktk-files",
+          "description": "Основное хранилище файлов ИКТК (CAD, BOM, УП, документы)",
+          "versioning": true,
+          "lifecycle": {
+            "expireAfterDays": null,
+            "noncurrentExpireAfterDays": 365
+          }
+        },
+        {
+          "name": "iktk-backups",
+          "description": "Резервные копии БД и файлов",
+          "versioning": false,
+          "lifecycle": {
+            "expireAfterDays": 90,
+            "noncurrentExpireAfterDays": null
+          }
+        },
+        {
+          "name": "iktk-incoming",
+          "description": "Каталог обмена для CLI-интеграций с CAD",
+          "versioning": false,
+          "lifecycle": {
+            "expireAfterDays": 30,
+            "noncurrentExpireAfterDays": null
+          }
+        },
+        {
+          "name": "iktk-logs",
+          "description": "Архив логов сервисов ИКТК",
+          "versioning": false,
+          "lifecycle": {
+            "expireAfterDays": 180,
+            "noncurrentExpireAfterDays": null
+          }
+        }
+      ]
+    }
+
+  # ---- Скрипт инициализации бакетов и пользователей ------------------------
+  01-init.sh: |
+    #!/bin/sh
+    set -e
+
+    echo "[$(date)] Инициализация MinIO..."
+
+    # Ожидание готовности MinIO
+    until mc alias set iktk http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do
+      echo "[$(date)] Ожидание готовности MinIO..."
+      sleep 5
+    done
+
+    echo "[$(date)] MinIO готов"
+
+    # Создание бакетов
+    mc mb --ignore-existing iktk/iktk-files
+    mc mb --ignore-existing iktk/iktk-backups
+    mc mb --ignore-existing iktk/iktk-incoming
+    mc mb --ignore-existing iktk/iktk-logs
+
+    echo "[$(date)] Бакеты созданы"
+
+    # Включение версионирования для основного бакета
+    mc version enable iktk/iktk-files
+
+    echo "[$(date)] Версионирование включено для iktk-files"
+
+    # Создание пользователя для приложений ИКТК
+    mc admin user add iktk "$IKTK_MINIO_ACCESS_KEY" "$IKTK_MINIO_SECRET_KEY" || true
+
+    # Создание политики для приложений ИКТК
+    cat > /tmp/iktk-app-policy.json <<EOF
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+            "s3:ListBucket",
+            "s3:GetBucketLocation",
+            "s3:ListAllMyBuckets"
+          ],
+          "Resource": [
+            "arn:aws:s3:::iktk-files",
+            "arn:aws:s3:::iktk-files/*",
+            "arn:aws:s3:::iktk-incoming",
+            "arn:aws:s3:::iktk-incoming/*"
+          ]
+        }
+      ]
+    }
+    EOF
+
+    mc admin policy create iktk iktk-app-policy /tmp/iktk-app-policy.json || true
+    mc admin policy attach iktk iktk-app-policy --user "$IKTK_MINIO_ACCESS_KEY" || true
+
+    echo "[$(date)] Пользователь iktk-app создан и настроен"
+
+    # Создание пользователя для резервного копирования
+    mc admin user add iktk "$BACKUP_MINIO_ACCESS_KEY" "$BACKUP_MINIO_SECRET_KEY" || true
+    mc admin policy attach iktk readwrite --user "$BACKUP_MINIO_ACCESS_KEY" || true
+
+    echo "[$(date)] Пользователь iktk-backup создан и настроен"
+
+    # Настройка lifecycle-политик
+    mc ilm rule add iktk/iktk-backups --expire-days 90 || true
+    mc ilm rule add iktk/iktk-incoming --expire-days 30 || true
+    mc ilm rule add iktk/iktk-logs --expire-days 180 || true
+
+    echo "[$(date)] Lifecycle-политики настроены"
+    echo "[$(date)] Инициализация MinIO завершена"
+
+---
+# -----------------------------------------------------------------------------
+# 3. Headless Service (для StatefulSet)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-headless
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: iktk-complex
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+      protocol: TCP
+    - name: console
+      port: 9001
+      targetPort: console
+      protocol: TCP
+
+---
+# -----------------------------------------------------------------------------
+# 4. Service (ClusterIP) — основной доступ
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: iktk-complex
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+      protocol: TCP
+    - name: console
+      port: 9001
+      targetPort: console
+      protocol: TCP
+  sessionAffinity: None
+
+---
+# -----------------------------------------------------------------------------
+# 5. StatefulSet
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: iktk-complex
+    app.kubernetes.io/version: "latest"
+spec:
+  serviceName: minio-headless
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio
+        app.kubernetes.io/component: storage
+        app.kubernetes.io/part-of: iktk-complex
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9000"
+        prometheus.io/path: "/minio/v2/metrics/cluster"
+    spec:
+      # ---- Безопасность -------------------------------------------------
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ---- Приоритет ----------------------------------------------------
+      priorityClassName: iktk-critical
+
+      # ---- Сервисный аккаунт --------------------------------------------
+      serviceAccountName: minio-sa
+      automountServiceAccountToken: false
+
+      # ---- Параметры завершения -----------------------------------------
+      terminationGracePeriodSeconds: 60
+
+      # ---- Контейнеры ---------------------------------------------------
+      containers:
+        # --- MinIO --------------------------------------------------------
+        - name: minio
+          image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+          imagePullPolicy: IfNotPresent
+
+          args:
+            - server
+            - /data
+            - --console-address
+            - ":9001"
+            - --address
+            - ":9000"
+
+          ports:
+            - name: api
+              containerPort: 9000
+              protocol: TCP
+            - name: console
+              containerPort: 9001
+              protocol: TCP
+
+          envFrom:
+            - configMapRef:
+                name: minio-config
+            - secretRef:
+                name: minio-secrets
+
+          # ---- Ресурсы ---------------------------------------------------
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+
+          # ---- Проверки --------------------------------------------------
+          startupProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+            timeoutSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+
+          # ---- Монтирование томов ---------------------------------------
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+
+          # ---- Безопасность контейнера ----------------------------------
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+        # --- mc: инициализация бакетов и пользователей --------------------
+        - name: init-buckets
+          image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - /config/01-init.sh
+          envFrom:
+            - configMapRef:
+                name: minio-config
+            - secretRef:
+                name: minio-secrets
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /config
+              readOnly: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+      # ---- Тома (для ConfigMap/Secret, не для данных) -------------------
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: minio-config
+            defaultMode: 0755
+            items:
+              - key: 01-init.sh
+                path: 01-init.sh
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+
+  # ---- Постоянное хранилище (PVC) -------------------------------------
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: minio
+          app.kubernetes.io/component: storage
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: iktk-standard
+        resources:
+          requests:
+            storage: 200Gi
+
+---
+# -----------------------------------------------------------------------------
+# 6. ServiceAccount
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: minio-sa
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: iktk-complex
+automountServiceAccountToken: false
+
+---
+# -----------------------------------------------------------------------------
+# 7. PodDisruptionBudget
+# -----------------------------------------------------------------------------
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: minio-pdb
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+
+---
+# -----------------------------------------------------------------------------
+# 8. NetworkPolicy
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-netpol
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Трафик от всех сервисов ИКТК (S3 API)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: iktk-complex
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Консоль MinIO — только из внутренней сети (опционально)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: iktk
+      ports:
+        - protocol: TCP
+          port: 9001
+    # Метрики для Prometheus
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9000
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# -----------------------------------------------------------------------------
+# 9. ServiceMonitor (для Prometheus Operator — опционально)
+# -----------------------------------------------------------------------------
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio-monitor
+  namespace: iktk
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: iktk-complex
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  endpoints:
+    - port: api
+      path: /minio/v2/metrics/cluster
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
+    - port: api
+      path: /minio/v2/metrics/bucket
+      interval: 60s
+      scrapeTimeout: 15s
+      scheme: http

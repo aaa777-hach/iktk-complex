@@ -1,0 +1,598 @@
+# =============================================================================
+# ИКТК: GitLab CI/CD конвейер
+# Путь: deployment/gitlab-ci/.gitlab-ci.yml
+# Назначение: полный цикл сборки, тестирования, упаковки и развёртывания
+#             всех сервисов ИКТК (Java, React/TypeScript, Docker, Kubernetes).
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Глобальные переменные
+# -----------------------------------------------------------------------------
+variables:
+  # ---- Общие ---------------------------------------------------------------
+  APP_NAME: "iktk"
+  APP_VERSION: "${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}"
+  BUILD_NUMBER: "${CI_PIPELINE_IID}"
+  GIT_COMMIT: "${CI_COMMIT_SHA}"
+
+  # ---- Java / Maven --------------------------------------------------------
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Dfile.encoding=UTF-8"
+  MAVEN_CLI_OPTS: "-B -q --no-transfer-progress"
+  JAVA_VERSION: "21"
+
+  # ---- Node / UI -----------------------------------------------------------
+  NODE_VERSION: "20"
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+
+  # ---- Docker --------------------------------------------------------------
+  DOCKER_DRIVER: "overlay2"
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_BUILDKIT: "1"
+  REGISTRY: "registry.example.com"
+  REGISTRY_PATH: "${REGISTRY}/iktk"
+
+  # ---- Kubernetes ----------------------------------------------------------
+  K8S_NAMESPACE: "iktk"
+  HELM_TIMEOUT: "10m"
+
+  # ---- Тестовые БД ---------------------------------------------------------
+  POSTGRES_DB: "iktk_test"
+  POSTGRES_USER: "iktk_test"
+  POSTGRES_PASSWORD: "test_password"
+
+# -----------------------------------------------------------------------------
+# Стадии
+# -----------------------------------------------------------------------------
+stages:
+  - lint
+  - build
+  - test
+  - package
+  - security
+  - deploy-dev
+  - deploy-stage
+  - deploy-prod
+
+# -----------------------------------------------------------------------------
+# Кэширование
+# -----------------------------------------------------------------------------
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .m2/repository/
+    - .npm/
+    - ui/web/node_modules/
+
+# -----------------------------------------------------------------------------
+# Шаблоны
+# -----------------------------------------------------------------------------
+
+# --- Java: базовый шаблон ---------------------------------------------------
+.java-template: &java-template
+  image: eclipse-temurin:21-jdk-alpine
+  before_script:
+    - apk add --no-cache git curl bash
+    - chmod +x mvnw 2>/dev/null || true
+  cache:
+    key: "maven-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .m2/repository/
+
+# --- Node: базовый шаблон ---------------------------------------------------
+.node-template: &node-template
+  image: node:20-alpine
+  before_script:
+    - cd ui/web
+    - if [ -f package-lock.json ]; then npm ci --prefer-offline --no-audit; else npm install --prefer-offline --no-audit; fi
+  cache:
+    key: "npm-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - ui/web/node_modules/
+      - .npm/
+
+# --- Docker: базовый шаблон -------------------------------------------------
+.docker-template: &docker-template
+  image: docker:27-cli
+  services:
+    - docker:27-dind
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
+    - docker info
+
+# --- Kubernetes: базовый шаблон ---------------------------------------------
+.k8s-template: &k8s-template
+  image: bitnami/kubectl:1.30
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - kubectl version --client
+    - kubectl -n "$K8S_NAMESPACE" get pods || true
+
+# =============================================================================
+# STAGE: lint
+# =============================================================================
+
+checkstyle:
+  stage: lint
+  <<: *java-template
+  script:
+    - ./mvnw $MAVEN_CLI_OPTS checkstyle:check -Dcheckstyle.config.location=config/checkstyle.xml || true
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+
+# --- Линтинг UI -------------------------------------------------------------
+ui-lint:
+  stage: lint
+  <<: *node-template
+  script:
+    - npm run lint || true
+    - npm run type-check || npx tsc --noEmit || true
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+
+# =============================================================================
+# STAGE: build
+# =============================================================================
+
+# --- Сборка Java-модулей ----------------------------------------------------
+build-java:
+  stage: build
+  <<: *java-template
+  script:
+    - ./mvnw $MAVEN_CLI_OPTS clean compile -DskipTests
+      -Dapp.version=${APP_VERSION}
+      -Dbuild.number=${BUILD_NUMBER}
+      -Dgit.commit=${GIT_COMMIT}
+  artifacts:
+    paths:
+      - "*/target/classes/"
+    expire_in: 1 day
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+    - if: '$CI_COMMIT_TAG'
+
+# --- Сборка UI --------------------------------------------------------------
+build-ui:
+  stage: build
+  <<: *node-template
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - ui/web/dist/
+    expire_in: 1 day
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+    - if: '$CI_COMMIT_TAG'
+
+# =============================================================================
+# STAGE: test
+# =============================================================================
+
+# --- Модульные тесты Java ---------------------------------------------------
+test-unit-java:
+  stage: test
+  <<: *java-template
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: "$POSTGRES_DB"
+        POSTGRES_USER: "$POSTGRES_USER"
+        POSTGRES_PASSWORD: "$POSTGRES_PASSWORD"
+    - name: rabbitmq:3.13-alpine
+      alias: rabbitmq
+      variables:
+        RABBITMQ_DEFAULT_USER: "iktk"
+        RABBITMQ_DEFAULT_PASS: "iktk_test"
+        RABBITMQ_DEFAULT_VHOST: "/iktk"
+  variables:
+    SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB}"
+    SPRING_DATASOURCE_USERNAME: "$POSTGRES_USER"
+    SPRING_DATASOURCE_PASSWORD: "$POSTGRES_PASSWORD"
+    SPRING_RABBITMQ_HOST: "rabbitmq"
+    SPRING_RABBITMQ_PORT: "5672"
+    SPRING_RABBITMQ_USERNAME: "iktk"
+    SPRING_RABBITMQ_PASSWORD: "iktk_test"
+    SPRING_RABBITMQ_VIRTUAL_HOST: "/iktk"
+  script:
+    - ./mvnw $MAVEN_CLI_OPTS test
+      -Dapp.version=${APP_VERSION}
+      -Dbuild.number=${BUILD_NUMBER}
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - "*/target/surefire-reports/TEST-*.xml"
+    paths:
+      - "*/target/surefire-reports/"
+    expire_in: 1 week
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+
+# --- Модульные тесты UI -----------------------------------------------------
+test-unit-ui:
+  stage: test
+  <<: *node-template
+  script:
+    - npm run test -- --run --coverage || true
+  artifacts:
+    when: always
+    paths:
+      - ui/web/coverage/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: ui/web/coverage/cobertura-coverage.xml
+    expire_in: 1 week
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+
+# --- Интеграционные тесты ---------------------------------------------------
+test-integration:
+  stage: test
+  <<: *java-template
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      variables:
+        POSTGRES_DB: "$POSTGRES_DB"
+        POSTGRES_USER: "$POSTGRES_USER"
+        POSTGRES_PASSWORD: "$POSTGRES_PASSWORD"
+    - name: rabbitmq:3.13-alpine
+      alias: rabbitmq
+      variables:
+        RABBITMQ_DEFAULT_USER: "iktk"
+        RABBITMQ_DEFAULT_PASS: "iktk_test"
+    - name: minio/minio:latest
+      alias: minio
+      command: ["server", "/data"]
+      variables:
+        MINIO_ROOT_USER: "minio_test"
+        MINIO_ROOT_PASSWORD: "minio_test_password"
+  variables:
+    SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB}"
+    SPRING_DATASOURCE_USERNAME: "$POSTGRES_USER"
+    SPRING_DATASOURCE_PASSWORD: "$POSTGRES_PASSWORD"
+    SPRING_RABBITMQ_HOST: "rabbitmq"
+    IKTK_STORAGE_ENDPOINT: "http://minio:9000"
+    IKTK_STORAGE_ACCESS_KEY: "minio_test"
+    IKTK_STORAGE_SECRET_KEY: "minio_test_password"
+  script:
+    - ./mvnw $MAVEN_CLI_OPTS verify -DskipUnitTests
+      -Pintegration-tests
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - "*/target/failsafe-reports/TEST-*.xml"
+    paths:
+      - "*/target/failsafe-reports/"
+    expire_in: 1 week
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+    - if: '$CI_COMMIT_TAG'
+
+# =============================================================================
+# STAGE: package
+# =============================================================================
+
+# --- Упаковка JAR -----------------------------------------------------------
+package-java:
+  stage: package
+  <<: *java-template
+  script:
+    - ./mvnw $MAVEN_CLI_OPTS package -DskipTests
+      -Dapp.version=${APP_VERSION}
+      -Dbuild.number=${BUILD_NUMBER}
+      -Dgit.commit=${GIT_COMMIT}
+  artifacts:
+    paths:
+      - "*/target/*.jar"
+    expire_in: 1 week
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop|release\/.*)$/'
+    - if: '$CI_COMMIT_TAG'
+
+# --- Docker-образы (по сервисам) --------------------------------------------
+.docker-build-template: &docker-build-template
+  stage: package
+  <<: *docker-template
+  script:
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG="$CI_COMMIT_TAG"
+      elif [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        TAG="latest"
+      else
+        TAG="$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA"
+      fi
+      echo "Сборка образа: ${REGISTRY_PATH}/${SERVICE_NAME}:${TAG}"
+      docker build \
+        --build-arg APP_VERSION=${APP_VERSION} \
+        --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
+        --build-arg GIT_COMMIT=${GIT_COMMIT} \
+        -f deployment/docker/Dockerfile.${SERVICE_NAME} \
+        -t ${REGISTRY_PATH}/${SERVICE_NAME}:${TAG} \
+        -t ${REGISTRY_PATH}/${SERVICE_NAME}:${CI_COMMIT_SHORT_SHA} \
+        .
+      docker push ${REGISTRY_PATH}/${SERVICE_NAME}:${TAG}
+      docker push ${REGISTRY_PATH}/${SERVICE_NAME}:${CI_COMMIT_SHORT_SHA}
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|release\/.*)$/'
+    - if: '$CI_COMMIT_TAG'
+
+docker-orchestrator:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "orchestrator"
+
+docker-gateway:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "gateway"
+
+docker-auth:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "auth"
+
+docker-casting:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "casting"
+
+docker-forging:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "forging"
+
+docker-machining:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "machining"
+
+docker-norming:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "norming"
+
+docker-equipment:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "equipment-service"
+
+docker-bom:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "bom-service"
+
+docker-assembly:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "assembly-process-service"
+
+docker-recommendation:
+  <<: *docker-build-template
+  variables:
+    SERVICE_NAME: "recommendation-service"
+
+# --- Docker-образ UI --------------------------------------------------------
+docker-ui:
+  stage: package
+  <<: *docker-template
+  script:
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG="$CI_COMMIT_TAG"
+      elif [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        TAG="latest"
+      else
+        TAG="$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA"
+      fi
+      docker build \
+        --build-arg VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8080} \
+        --build-arg VITE_APP_VERSION=${APP_VERSION} \
+        --build-arg VITE_BUILD_NUMBER=${BUILD_NUMBER} \
+        -f deployment/docker/Dockerfile.ui \
+        -t ${REGISTRY_PATH}/ui:${TAG} \
+        -t ${REGISTRY_PATH}/ui:${CI_COMMIT_SHORT_SHA} \
+        .
+      docker push ${REGISTRY_PATH}/ui:${TAG}
+      docker push ${REGISTRY_PATH}/ui:${CI_COMMIT_SHORT_SHA}
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|release\/.*)$/'
+    - if: '$CI_COMMIT_TAG'
+
+# =============================================================================
+# STAGE: security
+# =============================================================================
+
+# --- SAST: статический анализ безопасности ---------------------------------
+sast:
+  stage: security
+  image: registry.gitlab.com/security-products/semgrep:latest
+  script:
+    - semgrep --config=auto --json --output=semgrep-report.json . || true
+  artifacts:
+    when: always
+    paths:
+      - semgrep-report.json
+    expire_in: 1 week
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop)$/'
+    - if: '$CI_COMMIT_TAG'
+
+# --- Dependency Scanning ----------------------------------------------------
+dependency-scanning:
+  stage: security
+  image: owasp/dependency-check:latest
+  script:
+    - /usr/share/dependency-check/bin/dependency-check.sh
+      --project iktk
+      --scan .
+      --format HTML
+      --format JSON
+      --out reports/
+      --failOnCVSS 7 || true
+  artifacts:
+    when: always
+    paths:
+      - reports/
+    expire_in: 1 week
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop)$/'
+    - if: '$CI_COMMIT_TAG'
+
+# --- Container Scanning -----------------------------------------------------
+container-scanning:
+  stage: security
+  image: aquasec/trivy:latest
+  script:
+    - trivy image --exit-code 1 --severity HIGH,CRITICAL
+      ${REGISTRY_PATH}/orchestrator:${CI_COMMIT_SHORT_SHA} || true
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|release\/.*)$/'
+    - if: '$CI_COMMIT_TAG'
+
+# --- Secret Detection -------------------------------------------------------
+secret-detection:
+  stage: security
+  image: zricethezav/gitleaks:latest
+  script:
+    - gitleaks detect --source . --report-format json --report-path gitleaks-report.json || true
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 1 week
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|develop)$/'
+
+# =============================================================================
+# STAGE: deploy-dev
+# =============================================================================
+
+.deploy-template: &deploy-template
+  stage: deploy-dev
+  <<: *k8s-template
+  script:
+    - |
+      echo "Развёртывание в ${K8S_NAMESPACE} (${DEPLOY_ENV})..."
+      kubectl apply -f deployment/k8s/ -n ${K8S_NAMESPACE}
+      kubectl -n ${K8S_NAMESPACE} rollout status deployment/orchestrator --timeout=${HELM_TIMEOUT}
+      kubectl -n ${K8S_NAMESPACE} rollout status deployment/gateway --timeout=${HELM_TIMEOUT}
+      kubectl -n ${K8S_NAMESPACE} get pods
+  environment:
+    name: ${DEPLOY_ENV}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      variables:
+        DEPLOY_ENV: "development"
+        K8S_NAMESPACE: "iktk-dev"
+    - if: '$CI_COMMIT_BRANCH =~ /^release\/.*$/'
+      variables:
+        DEPLOY_ENV: "staging"
+        K8S_NAMESPACE: "iktk-stage"
+    - if: '$CI_COMMIT_TAG'
+      variables:
+        DEPLOY_ENV: "production"
+        K8S_NAMESPACE: "iktk"
+      when: manual
+
+deploy:
+  <<: *deploy-template
+
+# =============================================================================
+# STAGE: deploy-stage (опционально — если нужны отдельные джобы)
+# =============================================================================
+
+# (используется общий шаблон deploy выше, при необходимости — разделить)
+
+# =============================================================================
+# STAGE: deploy-prod (вручную, только по тегу)
+# =============================================================================
+
+deploy-production:
+  stage: deploy-prod
+  <<: *k8s-template
+  script:
+    - |
+      echo "Production deployment: ${CI_COMMIT_TAG}"
+      kubectl -n iktk set image deployment/orchestrator orchestrator=${REGISTRY_PATH}/orchestrator:${CI_COMMIT_TAG}
+      kubectl -n iktk set image deployment/gateway gateway=${REGISTRY_PATH}/gateway:${CI_COMMIT_TAG}
+      kubectl -n iktk set image deployment/auth auth=${REGISTRY_PATH}/auth:${CI_COMMIT_TAG}
+      kubectl -n iktk set image deployment/ui ui=${REGISTRY_PATH}/ui:${CI_COMMIT_TAG}
+      kubectl -n iktk rollout status deployment/orchestrator --timeout=${HELM_TIMEOUT}
+      kubectl -n iktk rollout status deployment/gateway --timeout=${HELM_TIMEOUT}
+      kubectl -n iktk rollout status deployment/ui --timeout=${HELM_TIMEOUT}
+  environment:
+    name: production
+    url: https://iktk.example.com
+  when: manual
+  allow_failure: false
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+
+# =============================================================================
+# Джобы по расписанию (scheduled pipelines)
+# =============================================================================
+
+# --- Ночные нагрузочные тесты -----------------------------------------------
+nightly-load-tests:
+  stage: test
+  <<: *java-template
+  script:
+    - ./mvnw $MAVEN_CLI_OPTS verify -Pload-tests
+  artifacts:
+    when: always
+    paths:
+      - "*/target/gatling/"
+    expire_in: 1 month
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+
+# --- Ночная проверка безопасности -------------------------------------------
+nightly-security-scan:
+  stage: security
+  image: aquasec/trivy:latest
+  script:
+    - trivy fs --exit-code 0 --severity HIGH,CRITICAL --format json -o trivy-fs.json .
+  artifacts:
+    when: always
+    paths:
+      - trivy-fs.json
+    expire_in: 1 month
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+
+# --- Очистка старых образов -------------------------------------------------
+cleanup-old-images:
+  stage: deploy-prod
+  image: docker:27-cli
+  services:
+    - docker:27-dind
+  script:
+    - |
+      echo "Очистка образов старше 30 дней в ${REGISTRY_PATH}..."
+      # Реализуется через registry API или специальный скрипт
+      echo "TODO: cleanup"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: always
