@@ -1,4 +1,3 @@
-$content = @'
 # Прогресс по проекту iktk-complex
 
 > Обновляйте в конце каждой сессии. Начинайте новый день с чтения — 2 минуты, и вы в контексте.
@@ -397,59 +396,9 @@ gateway — маршрутизация + CB + rate limit	✅
 Сквозной REST-запрос с JWT	✅
 Полный жизненный цикл проекта	✅
 Осталось: дописать модули (modules/*) и сервисы (services/*).
-'@
 
-path = "C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\PROGRESS.md" [System.IO.File]::WriteAllText(path, 
-c
-o
-n
-t
-e
-n
-t
-,
-(
-N
-e
-w
-−
-O
-b
-j
-e
-c
-t
-S
-y
-s
-t
-e
-m
-.
-T
-e
-x
-t
-.
-U
-T
-F
-8
-E
-n
-c
-o
-d
-i
-n
-g
 content,(New−ObjectSystem.Text.UTF8Encodingfalse))
 "Записано: 
-p
-a
-t
-h
-(
 path(((Get-Item $path).Length) байт)"
 
 text
@@ -482,7 +431,6 @@ Get-Content C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\PROGRESS.md 
 «Читаю PROGRESS.md. Прошлая сессия завершилась на COMPLETED. Сейчас хочу запустить modules/casting. Также надо поправить completed: true и actor в аудите.»
 
 Сессия закрыта. Отличная работа! 🎉
-$path = "C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\PROGRESS.md"
 
 ## 🔗 GIT-РЕПОЗИТОРИЙ
 
@@ -571,85 +519,10 @@ remote: Permission denied	Удалить старые креды (cmdkey /delete
 Everything up-to-date, но файлы не пушатся	Проверить git branch -vv, что ветка main связана с origin/main
 failed to push some refs	git pull origin main --allow-unrelated-histories, потом git push
 BOM в файлах	Сохранять только через [System.IO.File]::WriteAllText(..., UTF8Encoding $false)
-'@	
-b
-y
-t
-e
-s
-=
-[
-S
-y
-s
-t
-e
-m
-.
-I
-O
-.
-F
-i
-l
-e
-]
-:
-:
-R
-e
-a
-d
-A
-l
-l
-B
-y
-t
-e
-s
-(
 bytes=[System.IO.File]::ReadAllBytes(path)
-e
-x
-i
-s
-t
-i
-n
-g
-=
-i
-f
-(
 existing=if(bytes[0] -eq 0xEF -and 
-b
-y
-t
-e
-s
-[
-1
-]
-−
-e
-q
-0
-x
-B
-B
-−
-a
-n
-d
 bytes[1]−eq0xBB−andbytes[2] -eq 0xBF) {
 [System.Text.Encoding]::UTF8.GetString(
-b
-y
-t
-e
-s
-[
 3..
 (
 bytes[3..(bytes.Length-1)])
@@ -658,109 +531,12 @@ bytes[3..(bytes.Length-1)])
 }
 
 [System.IO.File]::WriteAllText(
-p
-a
-t
-h
-,
 path,existing + 
-a
-d
-d
-i
-t
-i
-o
-n
-,
-(
-N
-e
-w
-−
-O
-b
-j
-e
-c
-t
-S
-y
-s
-t
-e
-m
-.
-T
-e
-x
-t
-.
-U
-T
-F
-8
-E
-n
-c
-o
-d
-i
-n
-g
 addition,(New−ObjectSystem.Text.UTF8Encodingfalse))
 "Дополнен PROGRESS.md (
-(
-(
-G
-e
-t
-−
-I
-t
-e
-m
 ((Get−Itempath).Length) байт)"
 
 text
-
-## Шаг 2. Проверить, что раздел добавлен
-
-```powershell
-Select-String -Path "C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\PROGRESS.md" -Pattern "GIT-РЕПОЗИТОРИЙ|Соглашение о коммитах|Правила безопасности"
-Должны увидеть три совпадения.
-
-Шаг 3. Коммит и push
-powershell
-cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex
-git add PROGRESS.md
-git commit -m "docs: add git repository section to PROGRESS.md"
-git push
-Ожидаемый вывод git push:
-
-text
-To https://github.com/aaa777-hach/iktk-complex.git
-   db78faf..abc1234  main -> main
-Шаг 4. Проверить на GitHub
-Обновите https://github.com/aaa777-hach/iktk-complex — увидите 2 коммита.
-
-Что прислать
-Вывод Шага 1 — «Дополнен PROGRESS.md (NNN байт)».
-
-Вывод Шага 2 — 3 совпадения.
-
-Результат git commit и git push.
-
-Число коммитов на GitHub — 2?
-$base = "C:\Users\Antipovich\Desktop\Оркестр\iktk-complex"
-$path = "$base\PROGRESS.md"
-
-$addition = @'
-
-
----
-
-## 🆕 ОБНОВЛЕНИЯ (2026-10-16)
 
 ## 🆕 ОБНОВЛЕНИЯ (2026-10-16)
 
@@ -875,86 +651,10 @@ modules/casting/src/main/java/ru/iktk/modules/casting/config/SecurityConfig.java
 Дописать services/* (equipment, bom, assembly, recommendation) — большая работа.
 
 Восстановить forging/machining/norming — когда будет время дописать недостающие классы (10+ на каждый).
-'@
-
-b
-y
-t
-e
-s
-=
-[
-S
-y
-s
-t
-e
-m
-.
-I
-O
-.
-F
-i
-l
-e
-]
-:
-:
-R
-e
-a
-d
-A
-l
-l
-B
-y
-t
-e
-s
-(
 bytes=[System.IO.File]::ReadAllBytes(path)
-e
-x
-i
-s
-t
-i
-n
-g
-=
-i
-f
-(
 existing=if(bytes[0] -eq 0xEF -and 
-b
-y
-t
-e
-s
-[
-1
-]
-−
-e
-q
-0
-x
-B
-B
-−
-a
-n
-d
 bytes[1]−eq0xBB−andbytes[2] -eq 0xBF) {
 [System.Text.Encoding]::UTF8.GetString(
-b
-y
-t
-e
-s
-[
 3..
 (
 bytes[3..(bytes.Length-1)])
@@ -963,109 +663,12 @@ bytes[3..(bytes.Length-1)])
 }
 
 [System.IO.File]::WriteAllText(
-p
-a
-t
-h
-,
 path,existing + 
-a
-d
-d
-i
-t
-i
-o
-n
-,
-(
-N
-e
-w
-−
-O
-b
-j
-e
-c
-t
-S
-y
-s
-t
-e
-m
-.
-T
-e
-x
-t
-.
-U
-T
-F
-8
-E
-n
-c
-o
-d
-i
-n
-g
 addition,(New−ObjectSystem.Text.UTF8Encodingfalse))
 "Дополнен PROGRESS.md (
-(
-(
-G
-e
-t
-−
-I
-t
-e
-m
 ((Get−Itempath).Length) байт)"
 
 text
-
-## Шаг 2. Проверить, что раздел добавлен
-
-```powershell
-Select-String -Path $path -Pattern "ОБНОВЛЕНИЯ \(2026-10-16\)|completed: false.*РЕШЕНО|actor: SYSTEM.*РЕШЕНО"
-Должны увидеть 3 совпадения.
-
-Шаг 3. BOM
-powershell
-$bytes = [System.IO.File]::ReadAllBytes($path)[0..2]
-$bom = if ($bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191) { "BOM!" } else { "OK" }
-"PROGRESS.md: $bom"
-Должно быть OK.
-
-Шаг 4. Коммит и push
-powershell
-cd $base
-git add PROGRESS.md
-git commit -m "docs: update PROGRESS.md with fixes (completed flag, real actor in audit)
-
-- Mark 'completed: false' bug as resolved (commit e9adfb1)
-- Mark 'actor: SYSTEM' bug as resolved (commit f0a68fc)
-- Add current commit history (5 commits)
-- Update structure changes (module files moved, modules commented)
-- Refresh next steps (casting module is next)"
-git push
-Что прислать
-Вывод Шага 1 — «Дополнен PROGRESS.md (NNN байт)».
-
-Вывод Шага 2 — 3 совпадения.
-
-Вывод Шага 3 — OK.
-
-Результат git commit и git push.
-
-Начните с Шага 1.
-
----
 
 ## 📌 СЕССИЯ 2026-10-16 (вечер)
 
@@ -1162,3 +765,73 @@ git add <файлы>
 git commit -m "тип: описание"
 git push
 ```
+
+---
+
+## 2026-10-17 (вечер) — `PART_PROCESS_PLANNING` → `casting`: маршрутизация + реальный ТП
+
+**Проблема:** `PART_PROCESS_PLANNING` — точка контроля. `route()` блокировал отправку в модуль, проект «висел» в ожидании approve.
+
+**Коммиты (в `origin/main`):**
+
+| Hash | Что |
+|---|---|
+| `fdde572` | маршрутизация `PART_PROCESS_PLANNING` → `casting` |
+| `37cea12` | casting: consumer + топология команд |
+| `c2d8858` | orchestrator: топология результатов + DLQ |
+| `9db43f5` | порты 8080/8090 |
+| `6752ee7` | casting: реальный ТП + graceful fallback |
+| `d6e9927` | casting: `saved.getId()` (консистентный `processId`) |
+
+### Что изменилось относительно прошлой сессии
+
+| Было (устарело) | Стало |
+|---|---|
+| orchestrator — **8082** | orchestrator — **8080** |
+| casting — **8083** | casting — **8090** |
+| «casting не имеет `@RabbitListener`» | `CastingCommandConsumer` слушает `iktk.casting.queue` |
+| «Методы зависят от `GeometryClient`» | **fallback** на демо-геометрию (`demo-fallback: true`) |
+
+### Актуальный Quick Start
+
+```powershell
+docker start iktk-postgres iktk-rabbitmq iktk-redis iktk-minio
+
+cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\orchestrator;      java -jar .\target\orchestrator.jar   # 8080
+cd C:\Users\Antipovich\Desktop\Оркестр\iktk-complex\modules\casting;   java -jar .\target\casting.jar        # 8090
+
+Get-NetTCPConnection -LocalPort 8080,8090 -State Listen
+```
+
+### Что сделано
+
+- **Маршрутизация (`fdde572`):** `TransitionHandler.ROUTES` + `route()` исключение + `ModuleCommandProducer.moduleFor`
+- **Casting (`37cea12`):** `RabbitTopologyConfig` + `CastingCommandConsumer` + `@EnableRabbit` + `application.yml`
+- **Orchestrator (`c2d8858`):** `RabbitTopologyConfig` (результаты + DLQ) + `@EnableRabbit`
+- **Порты (`9db43f5`):** внешние `application.yml` → 8080/8090
+- **Реальный ТП (`6752ee7`):** `designProcess(request)` + fallback + `success=false` при ошибке
+- **Консистентность `processId` (`d6e9927`):** `saved.getId()` вместо `process.getId()`
+
+### E2E — подтверждение
+
+| Проверка | Статус |
+|---|---|
+| `PART_PROCESS_PLANNING` → `TOOLING_DESIGN` | OK |
+| `casting` получает `iktk.command.casting` | OK |
+| Реальный ТП: `INVESTMENT_CASTING`, 6 этапов | OK |
+| Fallback при 404 `GeometryClient` | OK |
+| `processId` = `id` в `casting_process` | OK |
+| `decision_log` полная цепочка | OK |
+
+### Что НЕ сделано
+
+1. **`integration-service`** — не реализован. `casting` использует `demo-fallback: true`. Для прода поднять сервис с `GET /api/v1/geometry/{projectId}?objectRef=...`, выключить `demo-fallback`
+2. **`equipment-service`** (8094) — не запущен, graceful degradation даёт `true`
+3. **`objectRef` из оркестратора** — `payload=null` даёт `default-object`. Передавать `ProjectRuntime.geometryId`
+4. **`application-prod.yml`** — вынести prod-настройки (`demo-fallback: false`, порты, RabbitMQ)
+5. **Порты gateway** — уточнить схему
+6. **`modules/forging, machining, norming`** — недописаны
+
+### Приоритет следующей сессии
+
+**Сначала `integration-service`** — иначе `casting` в проде строит ТП по демо-геометрии.
