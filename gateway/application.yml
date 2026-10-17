@@ -21,6 +21,7 @@ iktk:
     bom-uri: ${BOM_URI:http://localhost:8095}
     assembly-uri: ${ASSEMBLY_URI:http://localhost:8096}
     recommendation-uri: ${RECOMMENDATION_URI:http://localhost:8097}
+    casting-uri: ${CASTING_URI:http://localhost:8083}
     cors-allowed-origins:
       - http://localhost
       - http://localhost:80

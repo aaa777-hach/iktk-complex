@@ -18,6 +18,7 @@ public class GatewayProperties {
     private String bomUri = "http://localhost:8095";
     private String assemblyUri = "http://localhost:8096";
     private String recommendationUri = "http://localhost:8097";
+    private String castingUri = "http://localhost:8083";
 
     private List<String> corsAllowedOrigins = new ArrayList<>(List.of(
             "http://localhost",
@@ -45,7 +46,9 @@ public class GatewayProperties {
     public void setAssemblyUri(String assemblyUri) { this.assemblyUri = assemblyUri; }
 
     public String getRecommendationUri() { return recommendationUri; }
+    public String getCastingUri() { return castingUri; }
     public void setRecommendationUri(String recommendationUri) { this.recommendationUri = recommendationUri; }
+    public void setCastingUri(String castingUri) { this.castingUri = castingUri; }
 
     public List<String> getCorsAllowedOrigins() { return corsAllowedOrigins; }
     public void setCorsAllowedOrigins(List<String> corsAllowedOrigins) { this.corsAllowedOrigins = corsAllowedOrigins; }

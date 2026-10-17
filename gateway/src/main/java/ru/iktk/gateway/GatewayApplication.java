@@ -96,61 +96,6 @@ public class GatewayApplication {
      *   /api/v1/recommendations/** → recommendation-service
      * </pre>
      */
-    @Bean
-    public RouteLocator routes(RouteLocatorBuilder builder, GatewayProperties props) {
-        log.info("GatewayApplication: конфигурация маршрутов, orchestrator={}, auth={}",
-                props.getOrchestratorUri(), props.getAuthUri());
-
-        return builder.routes()
-                .route("orchestrator", r -> r
-                        .path("/api/v1/orchestrator/**")
-                        .filters(f -> f
-                                .stripPrefix(0)
-                                .circuitBreaker(c -> c
-                                        .setName("orchestrator-cb")
-                                        .setFallbackUri("forward:/fallback/orchestrator"))
-                                .retry(retry -> retry.setRetries(2))
-                        )
-                        .uri(props.getOrchestratorUri()))
-                .route("auth", r -> r
-                        .path("/api/v1/auth/**")
-                        .filters(f -> f.stripPrefix(0))
-                        .uri(props.getAuthUri()))
-                .route("equipment-service", r -> r
-                        .path("/api/v1/equipment/**")
-                        .filters(f -> f
-                                .stripPrefix(0)
-                                .circuitBreaker(c -> c.setName("equipment-cb"))
-                                .retry(retry -> retry.setRetries(2))
-                        )
-                        .uri(props.getEquipmentUri()))
-                .route("bom-service", r -> r
-                        .path("/api/v1/bom/**")
-                        .filters(f -> f
-                                .stripPrefix(0)
-                                .circuitBreaker(c -> c.setName("bom-cb"))
-                                .retry(retry -> retry.setRetries(2))
-                        )
-                        .uri(props.getBomUri()))
-                .route("assembly-process-service", r -> r
-                        .path("/api/v1/assembly/**")
-                        .filters(f -> f
-                                .stripPrefix(0)
-                                .circuitBreaker(c -> c.setName("assembly-cb"))
-                                .retry(retry -> retry.setRetries(2))
-                        )
-                        .uri(props.getAssemblyUri()))
-                .route("recommendation-service", r -> r
-                        .path("/api/v1/recommendations/**")
-                        .filters(f -> f
-                                .stripPrefix(0)
-                                .circuitBreaker(c -> c.setName("recommendation-cb"))
-                                .retry(retry -> retry.setRetries(2))
-                        )
-                        .uri(props.getRecommendationUri()))
-                .build();
-    }
-
     // ------------------------------------------------------------------
     // CORS
     // ------------------------------------------------------------------

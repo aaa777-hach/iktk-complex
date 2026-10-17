@@ -87,7 +87,6 @@ public class CastingProcessService {
     @Transactional
     public CastingResponse designProcess(CastingRequest request) {
         validate(request);
-
         String projectId = request.getProjectId();
         String objectRef = request.getObjectRef();
 
@@ -100,6 +99,14 @@ public class CastingProcessService {
             throw new OrchestrationException(
                     "Геометрия не найдена: projectId=" + projectId + ", objectRef=" + objectRef);
         }
+
+        return designProcessWithGeometry(request, geometry);
+    }
+
+    public CastingResponse designProcessWithGeometry(CastingRequest request, GeometryData geometry) {
+        validate(request);
+        String projectId = request.getProjectId();
+        String objectRef = request.getObjectRef();
 
         // 2. Анализ технологичности
         ManufacturabilityReport report = analyzeManufacturability(geometry);
@@ -236,30 +243,39 @@ public class CastingProcessService {
 
         // Приоритет — способ, указанный в запросе
         if (request.getPreferredMethod() != null) {
-            boolean available = equipmentClient.isMethodAvailable(
-                    request.getProjectId(), request.getPreferredMethod());
+            boolean available = isMethodAvailableSafe(request.getProjectId(), request.getPreferredMethod());
             if (available) {
-                log.debug("CastingProcessService: выбран предпочтительный способ {}",
-                        request.getPreferredMethod());
+                log.debug("CastingProcessService: выбран предпочтительный способ {}", request.getPreferredMethod());
                 return request.getPreferredMethod();
             }
-            log.warn("CastingProcessService: предпочтительный способ {} недоступен, " +
-                    "выполняется подбор", request.getPreferredMethod());
+            log.warn("CastingProcessService: предпочтительный способ {} недоступен, выполняется подбор",
+                    request.getPreferredMethod());
         }
 
         // Автоматический подбор по эвристикам
         CastingMethod method = pickMethodByAttributes(geometry, request);
 
-        boolean available = equipmentClient.isMethodAvailable(
-                request.getProjectId(), method);
+        boolean available = isMethodAvailableSafe(request.getProjectId(), method);
         if (!available) {
-            log.warn("CastingProcessService: способ {} недоступен на предприятии, " +
-                    "потребуется gap-анализ", method);
+            log.warn("CastingProcessService: способ {} недоступен на предприятии, потребуется gap-анализ", method);
         }
 
-        log.info("CastingProcessService.selectCastingMethod done: method={}, available={}",
-                method, available);
+        log.info("CastingProcessService.selectCastingMethod done: method={}, available={}", method, available);
         return method;
+    }
+
+    /**
+     * Безопасная проверка доступности оборудования. Если equipment-service недоступен,
+     * считаем оборудование доступным (деградация без падения).
+     */
+    private boolean isMethodAvailableSafe(String projectId, CastingMethod method) {
+        try {
+            return equipmentClient.isMethodAvailable(projectId, method);
+        } catch (Exception e) {
+            log.warn("CastingProcessService: equipment-service недоступен ({}), считаем оборудование доступным для {}",
+                    e.getMessage(), method);
+            return true;
+        }
     }
 
     private CastingMethod pickMethodByAttributes(GeometryData geometry, CastingRequest request) {

@@ -75,7 +75,6 @@ public class RoutesConfig {
      * {@link RouteLocator} использовался именно этот.
      */
     @Bean
-    @Primary
     public RouteLocator routes(RouteLocatorBuilder builder,
                                GatewayProperties props,
                                RedisRateLimiter redisRateLimiter) {
@@ -90,7 +89,6 @@ public class RoutesConfig {
                         .path("/api/v1/auth/**")
                         .filters(f -> f
                                 .stripPrefix(0)
-                                .addResponseHeader(HEADER_REQUEST_ID, "${requestId}")
                         )
                         .uri(props.getAuthUri()))
 
@@ -112,7 +110,6 @@ public class RoutesConfig {
                                 .requestRateLimiter(c -> c
                                         .setRateLimiter(redisRateLimiter)
                                         .setKeyResolver(userKeyResolver()))
-                                .addResponseHeader(HEADER_REQUEST_ID, "${requestId}")
                         )
                         .uri(props.getOrchestratorUri()))
 
@@ -130,7 +127,6 @@ public class RoutesConfig {
                                 .requestRateLimiter(c -> c
                                         .setRateLimiter(redisRateLimiter)
                                         .setKeyResolver(userKeyResolver()))
-                                .addResponseHeader(HEADER_REQUEST_ID, "${requestId}")
                         )
                         .uri(props.getEquipmentUri()))
 
@@ -148,7 +144,6 @@ public class RoutesConfig {
                                 .requestRateLimiter(c -> c
                                         .setRateLimiter(redisRateLimiter)
                                         .setKeyResolver(projectKeyResolver()))
-                                .addResponseHeader(HEADER_REQUEST_ID, "${requestId}")
                         )
                         .uri(props.getBomUri()))
 
@@ -166,7 +161,6 @@ public class RoutesConfig {
                                 .requestRateLimiter(c -> c
                                         .setRateLimiter(redisRateLimiter)
                                         .setKeyResolver(projectKeyResolver()))
-                                .addResponseHeader(HEADER_REQUEST_ID, "${requestId}")
                         )
                         .uri(props.getAssemblyUri()))
 
@@ -184,13 +178,26 @@ public class RoutesConfig {
                                 .requestRateLimiter(c -> c
                                         .setRateLimiter(redisRateLimiter)
                                         .setKeyResolver(projectKeyResolver()))
-                                .addResponseHeader(HEADER_REQUEST_ID, "${requestId}")
                         )
                         .uri(props.getRecommendationUri()))
 
                 // ------------------------------------------------------
                 // Fallback (локальный обработчик)
                 // ------------------------------------------------------
+                // ------------------------------------------------------
+                // Кастинг (литьё)
+                // ------------------------------------------------------
+                .route("casting", r -> r
+                        .path("/api/v1/casting/**")
+                        .filters(f -> f
+                                .stripPrefix(0)
+                                .circuitBreaker(c -> c
+                                        .setName("casting-cb")
+                                        .setFallbackUri("forward:/fallback/casting"))
+                                .retry(retry -> retry.setRetries(2))
+                        )
+                        .uri(props.getCastingUri()))
+
                 .route("fallback", r -> r
                         .path("/fallback/**")
                         .filters(f -> f.stripPrefix(1))
