@@ -8,6 +8,7 @@ import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 import ru.iktk.modules.casting.dto.CastingRequest;
@@ -27,6 +28,9 @@ public class CastingCommandConsumer {
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
 
+    @Value("${iktk.casting.demo-fallback:false}")
+    private boolean demoFallback;
+
     public CastingCommandConsumer(CastingProcessService castingProcessService,
                                   RabbitTemplate rabbitTemplate,
                                   ObjectMapper objectMapper) {
@@ -39,54 +43,77 @@ public class CastingCommandConsumer {
     public void onCommand(String bodyJson,
                           @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey,
                           @Header(value = AmqpHeaders.CORRELATION_ID, required = false) String correlationId) {
-        
-        log.info("CastingCommandConsumer: получена команда, routingKey={}, correlationId={}", routingKey, correlationId);
 
+        log.info("CastingCommandConsumer: command received, routingKey={}, correlationId={}", routingKey, correlationId);
+
+        String projectId = null;
         try {
             Map<String, Object> body = objectMapper.readValue(bodyJson, new TypeReference<>() {});
-            String projectId = (String) body.get("projectId");
-            
+            projectId = (String) body.get("projectId");
+
             Map<String, Object> payload = (Map<String, Object>) body.get("payload");
             String objectRef = "default-object";
-            if (payload != null && payload.containsKey("objectRef")) {
-                objectRef = (String) payload.get("objectRef");
+            if (payload != null && payload.get("objectRef") != null) {
+                objectRef = String.valueOf(payload.get("objectRef"));
             }
 
-            log.info("CastingCommandConsumer: обработка проекта projectId={}, objectRef={}", projectId, objectRef);
+            log.info("CastingCommandConsumer: processing projectId={}, objectRef={}", projectId, objectRef);
 
             CastingRequest request = new CastingRequest();
             request.setProjectId(projectId);
             request.setObjectRef(objectRef);
 
-            CastingProcessService.GeometryData geometry = new CastingProcessService.GeometryData(
-                    objectRef, "Сталь 45",
+            CastingResponse response = designWithFallback(request, objectRef);
+
+            log.info("CastingCommandConsumer: process designed, processId={}, method={}",
+                    response.getProcessId(), response.getMethod());
+            sendResult(projectId, response, correlationId, true, null);
+
+        } catch (Exception e) {
+            log.error("CastingCommandConsumer: processing error, projectId={}", projectId, e);
+            sendResult(projectId, null, correlationId, false, e.getMessage());
+        }
+    }
+
+    private CastingResponse designWithFallback(CastingRequest request, String objectRef) {
+        try {
+            return castingProcessService.designProcess(request);
+        } catch (Exception e) {
+            if (!demoFallback) {
+                log.error("CastingCommandConsumer: geometry fetch failed, demo-fallback disabled: {}", e.getMessage());
+                throw e;
+            }
+            log.warn("CastingCommandConsumer: geometry fetch failed ({}), fallback to DEMO geometry", e.getMessage());
+            CastingProcessService.GeometryData demo = new CastingProcessService.GeometryData(
+                    objectRef, "Steel 45",
                     BigDecimal.valueOf(1000), BigDecimal.valueOf(7.8),
                     BigDecimal.valueOf(5), BigDecimal.valueOf(3),
                     BigDecimal.valueOf(1.5), BigDecimal.valueOf(100),
                     3, false, false
             );
-
-            CastingResponse response = castingProcessService.designProcessWithGeometry(request, geometry);
-
-            log.info("CastingCommandConsumer: процесс литья спроектирован, processId={}", response.getProcessId());
-
-            sendResult(projectId, response, correlationId);
-
-        } catch (Exception e) {
-            log.error("CastingCommandConsumer: ошибка обработки команды", e);
+            return castingProcessService.designProcessWithGeometry(request, demo);
         }
     }
 
-    private void sendResult(String projectId, CastingResponse response, String correlationId) {
+    private void sendResult(String projectId, CastingResponse response, String correlationId,
+                            boolean success, String errorMessage) {
+        if (projectId == null) {
+            log.error("CastingCommandConsumer: projectId missing, cannot send result");
+            return;
+        }
         try {
             Map<String, Object> resultBody = new HashMap<>();
             resultBody.put("projectId", projectId);
             resultBody.put("event", "PART_PROCESS_READY");
-            resultBody.put("success", true);
-            
+            resultBody.put("success", success);
+
             Map<String, Object> payload = new HashMap<>();
-            payload.put("processId", response.getProcessId());
-            payload.put("method", response.getMethod());
+            if (success && response != null) {
+                payload.put("processId", response.getProcessId());
+                payload.put("method", response.getMethod() == null ? null : response.getMethod().name());
+            } else {
+                payload.put("error", errorMessage == null ? "unknown" : errorMessage);
+            }
             resultBody.put("payload", payload);
 
             rabbitTemplate.convertAndSend(
@@ -100,13 +127,13 @@ public class CastingCommandConsumer {
                         props.setHeader("projectId", projectId);
                         props.setHeader("module", "casting");
                         props.setHeader("event", "PART_PROCESS_READY");
-                        props.setHeader("success", true);
+                        props.setHeader("success", success);
                         return message;
                     }
             );
-            log.info("CastingCommandConsumer: результат отправлен в iktk.results, projectId={}", projectId);
+            log.info("CastingCommandConsumer: result sent, projectId={}, success={}", projectId, success);
         } catch (Exception e) {
-            log.error("CastingCommandConsumer: ошибка отправки результата", e);
+            log.error("CastingCommandConsumer: result send error, projectId={}", projectId, e);
         }
     }
 }

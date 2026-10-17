@@ -31,6 +31,7 @@ spring:
 
 iktk:
   casting:
+    demo-fallback: true
     default-method: SAND_CASTING
     min-wall-thickness: 3
     min-fillet-radius: 2
