@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: orchestrator
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:iktk}
+    password: ${RABBITMQ_PASSWORD:iktk_dev_password}
+    virtual-host: ${RABBITMQ_VHOST:/iktk}
+
+iktk:
+  messaging:
+    commands-exchange: iktk.commands
+    routing-prefix: iktk.command
+    results-queue: iktk.orchestrator.results.queue
+
+server:
+  port: 8080
