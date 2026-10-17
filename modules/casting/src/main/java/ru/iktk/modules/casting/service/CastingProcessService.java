@@ -144,14 +144,14 @@ public class CastingProcessService {
                 .createdAt(Instant.now())
                 .build();
 
-        repository.save(process);
+        CastingProcess saved = repository.save(process);
 
         log.info("CastingProcessService.designProcess done: projectId={}, processId={}, method={}, stages={}",
-                projectId, process.getId(), method, stages.size());
+                projectId, saved.getId(), method, stages.size());
 
         return CastingResponse.builder()
                 .projectId(projectId)
-                .processId(process.getId())
+                .processId(saved.getId())
                 .method(method)
                 .stages(stages)
                 .shrinkage(shrinkage)
