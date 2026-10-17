@@ -1,5 +1,7 @@
 package ru.iktk.modules.casting;
 
+
+import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
@@ -62,6 +64,7 @@ import java.net.UnknownHostException;
  *   <li>{@link EnableConfigurationProperties} — типизированные настройки.</li>
  * </ul>
  */
+@EnableRabbit
 @SpringBootApplication(scanBasePackages = {
         "ru.iktk.modules.casting",
         "ru.iktk.core"
