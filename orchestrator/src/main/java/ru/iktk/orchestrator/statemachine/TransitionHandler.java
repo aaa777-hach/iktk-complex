@@ -52,7 +52,7 @@ public class TransitionHandler {
     static {
         ROUTES.put(ProjectState.GEOMETRY_ANALYSIS,         "geometry-analysis");
         ROUTES.put(ProjectState.ASSEMBLY_ANALYSIS,         "bom-service");
-        ROUTES.put(ProjectState.PART_PROCESS_PLANNING,     "part-process-service");
+        ROUTES.put(ProjectState.PART_PROCESS_PLANNING,     "casting");
         ROUTES.put(ProjectState.TOOLING_DESIGN,            "tooling-service");
         ROUTES.put(ProjectState.EQUIPMENT_MATCHING,        "equipment-service");
         ROUTES.put(ProjectState.EQUIPMENT_GAP_RESOLUTION,  "recommendation-service");
@@ -97,7 +97,7 @@ public class TransitionHandler {
             return;
         }
 
-        if (state.isPointOfControl()) {
+        if (state.isPointOfControl() && state != ProjectState.PART_PROCESS_PLANNING) {
             log.info("route: projectId={}, state={} — точка контроля, ожидается решение пользователя",
                     projectId, state);
             decisionLogService.log(projectId, "AWAITING_DECISION",

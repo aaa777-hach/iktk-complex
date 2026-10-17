@@ -256,7 +256,8 @@ public class ModuleCommandProducer {
     private String moduleFor(ProjectEvent event) {
         return switch (event) {
             case START_GEOMETRY_INPUT, GEOMETRY_UPLOADED -> "geometry-analysis";
-            case IS_PART, PART_PROCESS_READY             -> "part-process-service";
+            case IS_PART                              -> "part-process-service";
+            case PART_PROCESS_READY                   -> "casting";
             case IS_ASSEMBLY, BOM_EXTRACTED              -> "bom-service";
             case TOOLING_READY                           -> "tooling-service";
             case EQUIPMENT_MATCHED, EQUIPMENT_GAP        -> "equipment-service";
