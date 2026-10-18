@@ -872,3 +872,38 @@ Get-NetTCPConnection -LocalPort 8080,8090 -State Listen
 2. `integration` (8095) → `casting` (8090) → `orchestrator` (8080).
 
 Если запустить `casting`/`orchestrator` до Postgres — падают на `Connection refused: localhost:5432`.
+
+---
+
+## 2026-10-18 — equipment-service (минимальный) + честный available в casting
+
+**Проблема:** `casting` вызывал `EquipmentClient` → 8094, но `equipment-service` не был запущен (`Connection refused`). `isMethodAvailableSafe` глотал ошибку и возвращал `true` (graceful degradation).
+
+**Решение:**
+
+- **`services/equipment-service`** (порт 8094): минимальный модуль (`web` + `actuator`, без JPA/AMQP) с `GET /api/v1/equipment/is-method-available?projectId=...&method=...` → `boolean`. Stub: `SAND/INVESTMENT/DIE/GRAVITY_CASTING → true`, остальные → `false`.
+- **`pom.xml`** (корневой): `services/equipment-service` раскомментирован.
+- **Неполный скелет** удалён из репо (не компилировался). Полный бэкап — `services/equipment-service/.bak-*/` (gitignored).
+
+**Коммит:** `adefc23` — `feat(equipment): minimal equipment-service + register in pom`
+
+**E2E-подтверждение (projectId 29e294e3-..., 13:29:30):**
+
+| Проверка | Статус |
+|---|---|
+| `equipment` лог: `isMethodAvailable: projectId=29e294e3-..., available=true` | OK |
+| `casting` лог: **нет** `equipment-service недоступен` (для 29e294e3) | OK |
+| `selectCastingMethod done: method=INVESTMENT_CASTING, available=true` | OK |
+| `state = TOOLING_DESIGN` | OK |
+
+### Что осталось (TODO)
+
+1. **`objectRef` из оркестратора** — `payload=null` → `default-object`. Передавать `ProjectRuntime.geometryId`. **Следующий приоритет.**
+2. **`application-prod.yml`** — вынести prod-настройки.
+3. **`integration` → реальные данные** (MinIO или БД `iktk_geometry`).
+4. **`equipment-service` → реальный реестр** (JPA, gap-analysis, matching — восстановить из `.bak/`).
+
+### Порядок запуска (после перезагрузки Windows)
+
+1. `docker start iktk-postgres iktk-rabbitmq iktk-redis iktk-minio` → дождаться `healthy`.
+2. `integration` (8095) → `equipment-service` (8094) → `casting` (8090) → `orchestrator` (8080).
