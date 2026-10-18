@@ -938,3 +938,42 @@ Get-NetTCPConnection -LocalPort 8080,8090 -State Listen
 1. **`application-prod.yml`** — вынести prod-настройки. **Следующий приоритет.**
 2. **`integration` → реальные данные** (MinIO или БД `iktk_geometry`).
 3. **`equipment-service` → реальный реестр** (JPA, gap-analysis, matching).
+
+---
+
+## 2026-10-18 — application-prod.yml для всех сервисов + .env.example
+
+**Проблема:** все настройки (пароли БД/RabbitMQ, JWT-секрет, `ddl-auto: update`, `localhost` для integration/equipment) были в `application.yml` — небезопасно для прода (секреты в репо, авто-миграции, локальные хосты).
+
+**Решение:**
+
+- **`application-prod.yml`** для orchestrator, casting, integration, equipment-service:
+  - `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD`, `IKTK_JWT_SECRET` — **без дефолтов** (fail-fast, если не заданы);
+  - `POSTGRES_HOST`, `RABBITMQ_HOST` — **без дефолтов**;
+  - `ddl-auto: validate` (только проверка схемы, без изменений);
+  - `demo-fallback: false` явно (casting);
+  - `iktk.equipment.url` / `iktk.integration.url` — из env (`IKTK_EQUIPMENT_URL`, `IKTK_INTEGRATION_URL`);
+  - `management.endpoints` — только `health`;
+  - логирование `root`/`ru.iktk` — `INFO`.
+- **`.env.example`** — документирует все обязательные env-переменные.
+- **`.gitignore`** — добавлен `.env` (локальные секреты не коммитятся).
+
+**Коммит:** `60073ba` — `feat(prod): application-prod.yml for all services + .env.example`
+
+**Тесты prod:**
+
+| Проверка | Статус |
+|---|---|
+| `--spring.profiles.active=prod` **без** env → приложение падает (`UnknownHostException: ${POSTGRES_HOST}` / нет connection) | OK |
+| `--spring.profiles.active=prod` **с** env → `Started OrchestratorApplication` | OK |
+| dev (без профиля) → стартует как раньше | OK |
+
+**Замечание:** unresolved placeholder в `spring.datasource.url` даёт `UnknownHostException: ${POSTGRES_HOST}` (relaxed binding), а не `Could not resolve placeholder`. Fail-fast **есть**, но сообщение менее читаемое. Если нужно «красивое» — добавить `@ConfigurationProperties` с `@NotBlank` (отдельная задача).
+
+### Что осталось (TODO)
+
+1. **`integration` → реальные данные** (MinIO или БД `iktk_geometry`) — сейчас stub по `objectRef.hashCode()`.
+2. **`equipment-service` → реальный реестр** (JPA, gap-analysis, matching — восстановить из `.bak/`).
+3. **`objectRef` → реальная геометрия** — сейчас `geo-12345` (тест), в проде — из `geometry-service`.
+4. **Flyway/Liquibase** — вместо `ddl-auto: update` в dev и `validate` в prod (миграции как код).
+5. **`application-prod.yml` в `core`** — общие настройки (если нужно).
