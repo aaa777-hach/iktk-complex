@@ -1,0 +1,52 @@
+server:
+  port: ${SERVER_PORT:8090}
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/iktk_casting
+    username: ${POSTGRES_USER:iktk_app}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 3
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:iktk}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: ${RABBITMQ_VHOST:/iktk}
+
+iktk:
+  casting:
+    demo-fallback: false
+    default-method: SAND_CASTING
+    min-wall-thickness: 3
+    min-fillet-radius: 2
+    min-draft-angle: 1
+  equipment:
+    url: ${IKTK_EQUIPMENT_URL}
+  integration:
+    url: ${IKTK_INTEGRATION_URL}
+  messaging:
+    commands-queue: iktk.casting.queue
+    results-queue: iktk.results
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    root: INFO
+    ru.iktk: INFO
