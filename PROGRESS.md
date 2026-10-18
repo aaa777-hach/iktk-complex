@@ -907,3 +907,34 @@ Get-NetTCPConnection -LocalPort 8080,8090 -State Listen
 
 1. `docker start iktk-postgres iktk-rabbitmq iktk-redis iktk-minio` → дождаться `healthy`.
 2. `integration` (8095) → `equipment-service` (8094) → `casting` (8090) → `orchestrator` (8080).
+
+---
+
+## 2026-10-18 — objectRef/geometryId из оркестратора в casting/integration
+
+**Проблема:** `route()` шёл `send(..., null)` — `casting` получал `objectRef=default-object`, `integration` возвращал стаб по хешу `"default-object"` для всех проектов.
+
+**Решение:**
+
+- **`ProjectRuntime.payload`**: убран `@Transient` (он **отменял** `@Column`), добавлен `@JdbcTypeCode(SqlTypes.JSON)` — теперь `payload` **реально сохраняется** в `project_state.payload jsonb`.
+- **`OrchestrationService.startProject`**: `.payload(request.getGeometryId() != null ? Map.of("objectRef", geometryId) : Map.of())` в builder.
+- **`OrchestrationService.run`**: `route(projectId, state, sm, runtime.getPayload())`.
+- **`TransitionHandler.route`**: 4-й параметр `Map<String, ?> payload` → `moduleCommandProducer.send(..., payload)`.
+- **`OrchestrationServiceTest`**: `route(...)` вызовы обновлены на 4 аргумента (`any()` для payload).
+
+**Коммит:** `4361bc0` — `feat(orchestrator): pass project payload (objectRef/geometryId) to module commands`
+
+**E2E-подтверждение (projectId b0b7d8a4-..., geometryId=geo-12345):**
+
+| Проверка | Статус |
+|---|---|
+| `project_state.payload` = `{"objectRef": "geo-12345"}` | OK |
+| `casting` лог: `objectRef=geo-12345` (не `default-object`) | OK |
+| `designProcess done: ... method=INVESTMENT_CASTING, stages=6` | OK |
+| `state = TOOLING_DESIGN` | OK |
+
+### Что осталось (TODO)
+
+1. **`application-prod.yml`** — вынести prod-настройки. **Следующий приоритет.**
+2. **`integration` → реальные данные** (MinIO или БД `iktk_geometry`).
+3. **`equipment-service` → реальный реестр** (JPA, gap-analysis, matching).
