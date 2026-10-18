@@ -1,0 +1,16 @@
+server:
+  port: 8094
+
+spring:
+  application:
+    name: equipment-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    ru.iktk.equipment: INFO

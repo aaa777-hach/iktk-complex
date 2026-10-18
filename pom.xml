@@ -35,7 +35,7 @@
     <!-- <module>modules/norming</module> -->
 
     <!-- Недописанные модули: временно исключены из сборки -->
-    <!-- <module>services/equipment-service</module> -->
+    <module>services/equipment-service</module>
     <!-- <module>services/bom-service</module> -->
     <!-- <module>services/assembly-process-service</module> -->
     <!-- <module>services/recommendation-service</module> -->

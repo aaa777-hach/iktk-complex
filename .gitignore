@@ -99,3 +99,5 @@ coverage/
 *.bak
 *.swp
 *.swo
+# equipment-service full skeleton backup (local only)
+services/equipment-service/.bak-*/
