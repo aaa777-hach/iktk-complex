@@ -1,0 +1,16 @@
+server:
+  port: 8095
+
+spring:
+  application:
+    name: integration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    ru.iktk.modules.integration: INFO

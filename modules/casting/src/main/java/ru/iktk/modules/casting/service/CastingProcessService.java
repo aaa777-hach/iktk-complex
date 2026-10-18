@@ -1,5 +1,8 @@
 package ru.iktk.modules.casting.service;
 
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -541,11 +544,19 @@ public class CastingProcessService {
         private final boolean undercuts;
         private final boolean hotSpots;
 
-        public GeometryData(String objectRef, String material, BigDecimal volume,
-                            BigDecimal mass, BigDecimal minWallThickness,
-                            BigDecimal minFilletRadius, BigDecimal minDraftAngle,
-                            BigDecimal nominalDimensions, int complexityScore,
-                            boolean undercuts, boolean hotSpots) {
+        @JsonCreator
+        public GeometryData(
+                @JsonProperty("objectRef") String objectRef,
+                @JsonProperty("material") String material,
+                @JsonProperty("volume") BigDecimal volume,
+                @JsonProperty("mass") BigDecimal mass,
+                @JsonProperty("minWallThickness") BigDecimal minWallThickness,
+                @JsonProperty("minFilletRadius") BigDecimal minFilletRadius,
+                @JsonProperty("minDraftAngle") BigDecimal minDraftAngle,
+                @JsonProperty("nominalDimensions") BigDecimal nominalDimensions,
+                @JsonProperty("complexityScore") int complexityScore,
+                @JsonProperty("undercuts") boolean undercuts,
+                @JsonProperty("hotSpots") boolean hotSpots) {
             this.objectRef = objectRef;
             this.material = material;
             this.volume = volume;

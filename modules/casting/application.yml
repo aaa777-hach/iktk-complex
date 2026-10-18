@@ -31,7 +31,7 @@ spring:
 
 iktk:
   casting:
-    demo-fallback: true
+    demo-fallback: false
     default-method: SAND_CASTING
     min-wall-thickness: 3
     min-fillet-radius: 2
@@ -39,7 +39,7 @@ iktk:
   equipment:
     url: http://localhost:8094
   integration:
-    url: http://localhost:8090
+    url: http://localhost:8095
   messaging:
     commands-queue: iktk.casting.queue
     results-queue: iktk.results
