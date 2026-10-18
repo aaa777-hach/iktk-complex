@@ -835,3 +835,40 @@ Get-NetTCPConnection -LocalPort 8080,8090 -State Listen
 ### Приоритет следующей сессии
 
 **Сначала `integration-service`** — иначе `casting` в проде строит ТП по демо-геометрии.
+
+---
+
+## 2026-10-18 — integration-service (реальная геометрия) + casting без fallback
+
+**Проблема:** `casting` использовал `demo-fallback: true` (жёстко зашитая демо-геометрия), потому что `GeometryClient` обращался к несуществующему `integration-service` (404).
+
+**Решение:**
+
+- **Новый модуль `modules/integration`** (порт 8095): `GET /api/v1/geometry/{projectId}?objectRef=...` → JSON `GeometryData`. Stub: детерминированные значения по `objectRef.hashCode()`.
+- **`casting/application.yml`**: `integration.url: http://localhost:8095`, `demo-fallback: false`.
+- **`CastingProcessService.GeometryData`**: `@JsonCreator` + `@JsonProperty` — для надёжной десериализации Feign.
+
+**Коммит:** `24a7f7f` — `feat(integration): geometry provider service + casting real geometry`
+
+**E2E-подтверждение:**
+
+| Проверка | Статус |
+|---|---|
+| `integration` отвечает `GeometryService: projectId=..., volume=1435.0, complexity=5` | OK |
+| `casting` — **нет** `fallback to DEMO geometry` | OK |
+| `designProcess done: method=INVESTMENT_CASTING, stages=6` | OK |
+| `state = TOOLING_DESIGN` (projectId `265eabf2-...`) | OK |
+
+### Что осталось (TODO)
+
+1. **`equipment-service`** (8094) — не запущен, graceful degradation → `available=true`. Следующий приоритет.
+2. **`objectRef` из оркестратора** — `payload=null` → `default-object`. Передавать `ProjectRuntime.geometryId`.
+3. **`application-prod.yml`** — вынести prod-настройки (`demo-fallback: false`, порты, RabbitMQ).
+4. **`integration` → реальные данные** (не stub): MinIO (STL/STEP) или БД `iktk_geometry`.
+
+### Порядок запуска после перезагрузки Windows
+
+1. `docker start iktk-postgres iktk-rabbitmq iktk-redis iktk-minio` → дождаться `healthy` (`iktk-postgres`).
+2. `integration` (8095) → `casting` (8090) → `orchestrator` (8080).
+
+Если запустить `casting`/`orchestrator` до Postgres — падают на `Connection refused: localhost:5432`.
