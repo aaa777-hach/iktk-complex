@@ -209,7 +209,7 @@ class OrchestrationServiceTest {
             when(projectStateRepository.findByProjectId(PROJECT_ID))
                     .thenReturn(Optional.of(runtime));
             doAnswer(inv -> null).when(transitionHandler)
-                    .route(anyString(), any(), any());
+                    .route(anyString(), any(), any(), any());
 
             // when
             OrchestrationResponse response = orchestrationService.run(PROJECT_ID);
@@ -221,7 +221,8 @@ class OrchestrationServiceTest {
             verify(transitionHandler).route(
                     eq(PROJECT_ID),
                     eq(ProjectState.GEOMETRY_ANALYSIS),
-                    any(StateMachine.class));
+                    any(StateMachine.class),
+                    any());
             verify(decisionLogService).log(
                     eq(PROJECT_ID),
                     eq("ORCHESTRATION_RUN"),

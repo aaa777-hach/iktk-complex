@@ -1,5 +1,8 @@
 package ru.iktk.orchestrator.model;
 
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -48,8 +51,10 @@ public class ProjectRuntime {
     @Column(name = "version", length = 64)
     private String version;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+
+
     @Column(name = "payload", columnDefinition = "jsonb")
-    @Transient
     private Map<String, Object> payload;
 
     @Column(name = "created_at", nullable = false)

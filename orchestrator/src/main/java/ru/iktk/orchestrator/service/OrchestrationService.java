@@ -93,6 +93,9 @@ public class OrchestrationService {
                 .projectId(projectId)
                 .projectName(request.getProjectName())
                 .requestedBy(request.getRequestedBy())
+                .payload(request.getGeometryId() != null && !request.getGeometryId().isBlank()
+                        ? Map.of("objectRef", request.getGeometryId())
+                        : Map.of())
                 .state(ProjectState.PROJECT_INIT)
                 .createdAt(Instant.now())
                 .build();
@@ -122,7 +125,7 @@ public class OrchestrationService {
         log.info("run: projectId={}, currentState={}", projectId, runtime.getState());
 
         // Передать управление профильному модулю по текущему состоянию
-        transitionHandler.route(projectId, runtime.getState(), sm);
+        transitionHandler.route(projectId, runtime.getState(), sm, runtime.getPayload());
 
         decisionLogService.log(projectId, "ORCHESTRATION_RUN",
                 Map.of("state", runtime.getState().name()), currentActor());

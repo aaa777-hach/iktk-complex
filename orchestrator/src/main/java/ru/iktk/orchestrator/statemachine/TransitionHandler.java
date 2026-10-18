@@ -84,7 +84,8 @@ public class TransitionHandler {
      */
     public void route(String projectId,
                       ProjectState state,
-                      StateMachine<ProjectState, ProjectEvent> sm) {
+                      StateMachine<ProjectState, ProjectEvent> sm,
+                      Map<String, ?> payload) {
         String module = ROUTES.get(state);
 
         if (module == null) {
@@ -106,7 +107,7 @@ public class TransitionHandler {
         }
 
         log.info("route: projectId={}, state={} → module={}", projectId, state, module);
-        moduleCommandProducer.send(projectId, module, state, null);
+        moduleCommandProducer.send(projectId, module, state, payload);
 
         decisionLogService.log(projectId, "ROUTED",
                 Map.of("state", state.name(), "module", module));
