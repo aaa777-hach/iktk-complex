@@ -40,6 +40,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -527,4 +530,106 @@ class OrchestrationServiceTest {
             assertThat(projects).isNotNull();
         }
     }
-}
+
+    // =========================================================================
+    // 10. Дополнительные ветки (PATCHED_EXTRA_TESTS)
+    // =========================================================================
+
+    @Nested
+    @DisplayName("Дополнительные ветки OrchestrationService")
+    class ExtraBranchTests {
+
+        @Test
+        @DisplayName("startProject с geometryId: payload содержит objectRef")
+        void startProject_withGeometryId_payloadContainsObjectRef() {
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName(PROJECT_NAME)
+                    .geometryId("geom-42")
+                    .requestedBy(REQUESTED_BY)
+                    .build();
+
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class)))
+                    .thenReturn(true);
+
+            orchestrationService.startProject(request);
+
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeastOnce()).save(captor.capture());
+            ProjectRuntime saved = captor.getAllValues().get(0);
+            assertThat(saved.getPayload()).containsEntry("objectRef", "geom-42");
+        }
+
+        @Test
+        @DisplayName("onModuleResult: attempt == MAX_RETRIES (граница 3) -> moveToAwaitingDecision")
+        void onModuleResult_attemptEqualsMax_goesToAwaitingDecision() {
+            runtime.setState(ProjectState.NORMING);
+            when(projectStateRepository.findByProjectId(PROJECT_ID))
+                    .thenReturn(Optional.of(runtime));
+            when(transitionHandler.incrementAttempt(eq(PROJECT_ID), any())).thenReturn(3);
+
+            orchestrationService.onModuleResult(
+                    PROJECT_ID, ProjectEvent.NORMS_READY, Map.of("err", "x"), false);
+
+            verify(moduleCommandProducer, never()).retry(anyString(), any(), any());
+            verify(transitionHandler).moveToAwaitingDecision(any(), eq(PROJECT_ID), eq(ProjectEvent.NORMS_READY));
+        }
+
+        @Test
+        @DisplayName("dispatchEvent: auto-state с nextAuto != null -> рекурсивный переход")
+        void dispatchEvent_autoState_recurses() {
+            runtime.setState(ProjectState.GEOMETRY_ANALYSIS);
+            when(projectStateRepository.findByProjectId(PROJECT_ID))
+                    .thenReturn(Optional.of(runtime));
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class)))
+                    .thenReturn(true);
+
+            State<ProjectState, ProjectEvent> s1 = mock(State.class);
+            when(s1.getId()).thenReturn(ProjectState.GEOMETRY_ANALYSIS);
+            State<ProjectState, ProjectEvent> s2 = mock(State.class);
+            when(s2.getId()).thenReturn(ProjectState.NORMING);
+            when(stateMachine.getState()).thenReturn(s1, s2, s2);
+
+            when(transitionHandler.isAutoState(ProjectState.GEOMETRY_ANALYSIS)).thenReturn(true);
+            when(transitionHandler.nextAuto(ProjectState.GEOMETRY_ANALYSIS)).thenReturn(ProjectEvent.IS_PART);
+
+            orchestrationService.onModuleResult(
+                    PROJECT_ID, ProjectEvent.IS_PART, Map.of(), true);
+
+            verify(stateMachine, atLeast(2)).sendEvent(any(org.springframework.messaging.Message.class));
+        }
+
+        @Test
+        @DisplayName("obtainMachine: повторный вызов возвращает тот же StateMachine (кэш)")
+        void obtainMachine_cachesPerProject() {
+            runtime.setState(ProjectState.PROJECT_INIT);
+            when(projectStateRepository.findByProjectId(PROJECT_ID))
+                    .thenReturn(Optional.of(runtime));
+
+            orchestrationService.getSummary(PROJECT_ID);
+            orchestrationService.getSummary(PROJECT_ID);
+
+            verify(stateMachineFactory, times(1)).getStateMachine(anyString());
+        }
+
+        @Test
+        @DisplayName("currentActor: читает X-User-Id из HTTP-запроса")
+        void currentActor_readsHeader() {
+            runtime.setState(ProjectState.GEOMETRY_ANALYSIS);
+            when(projectStateRepository.findByProjectId(PROJECT_ID))
+                    .thenReturn(Optional.of(runtime));
+            doAnswer(inv -> null).when(transitionHandler).route(anyString(), any(), any(), any());
+
+            var request = new org.springframework.mock.web.MockHttpServletRequest();
+            request.addHeader("X-User-Id", "user-777");
+            org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                    new org.springframework.web.context.request.ServletRequestAttributes(request));
+            try {
+                orchestrationService.run(PROJECT_ID);
+            } finally {
+                org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+            }
+
+            verify(decisionLogService).log(
+                    eq(PROJECT_ID), eq("ORCHESTRATION_RUN"), any(Map.class), eq("user-777"));
+        }
+    }}
