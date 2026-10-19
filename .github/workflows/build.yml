@@ -22,6 +22,10 @@ jobs:
       - name: Build and test
         run: mvn -B -e -Dsurefire.useFile=false -DtrimStackTrace=false clean verify
 
+      - name: Print surefire reports on failure
+        if: failure()
+        run: |
+          find . -path '*/target/surefire-reports/*.txt' -print -exec cat {} \;
       - name: Upload surefire reports
         if: always()
         uses: actions/upload-artifact@v4
