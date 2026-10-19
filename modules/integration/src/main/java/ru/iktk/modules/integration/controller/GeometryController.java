@@ -28,6 +28,13 @@ public class GeometryController {
             @PathVariable String projectId,
             @RequestParam(required = false) String objectRef) {
         log.info("GET /api/v1/geometry/{}?objectRef={}", projectId, objectRef);
-        return ResponseEntity.ok(geometryService.buildGeometry(projectId, objectRef));
+
+        Map<String, Object> body = geometryService.buildGeometry(projectId, objectRef);
+        if (body == null) {
+            log.warn("GET /api/v1/geometry/{}?objectRef={} -> 404 (not found)",
+                    projectId, objectRef);
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(body);
     }
 }

@@ -5,6 +5,27 @@ spring:
   application:
     name: integration
 
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/iktk_geometry
+    username: ${POSTGRES_USER:iktk_app}
+    password: ${POSTGRES_PASSWORD:iktk_dev_password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
 management:
   endpoints:
     web:

@@ -1015,3 +1015,36 @@ Get-NetTCPConnection -LocalPort 8080,8090 -State Listen
 
 1. **`integration` → реальные данные** (MinIO/БД `iktk_geometry`) — сейчас stub по `objectRef.hashCode()`. **Следующий приоритет.**
 2. **`equipment-service` → полный реестр** (JPA `EquipmentStatus`, `EquipmentTooling`, `EquipmentRequirement`, `EquipmentGapAnalysis` — V3+).
+
+---
+
+## 2026-10-19 — integration: JPA + Flyway + реальная БД (geometry)
+
+**Проблема:** `integration` был **stub** — `GeometryService` вычислял геометрию по `objectRef.hashCode()` (детерминированно, но не реальные данные).
+
+**Решение:**
+
+- **`V1__init.sql`** (iktk_geometry): таблица `geometry` (`object_ref` UNIQUE, `material`, `volume`, `mass`, `min_wall_thickness`, `min_fillet_radius`, `min_draft_angle`, `nominal_dimensions`, `complexity_score`, `undercuts`, `hot_spots`);
+- **`V2__seed.sql`**: `geo-12345` (`Steel 20Kh`, 1000.0, complexity=2), `geo-test` (`AlSi10Mg`, 2500.0, complexity=4);
+- **`Geometry` entity** + **`GeometryRepository.findByObjectRef`**;
+- **`GeometryService.buildGeometry`** → `repository.findByObjectRef` (stub → БД); `null` если не найдено;
+- **`GeometryController`** — `null` → `404 NOT_FOUND` (→ `casting` получает `FeignException.NotFound` → `success=false`);
+- **`pom.xml`** — JPA + PostgreSQL + Flyway + Validation;
+- **`application.yml`** — datasource `iktk_geometry`, `ddl-auto: validate`, `flyway.enabled: true`.
+
+**E2E-подтверждение (projectId cbfd000a-..., geometryId=geo-12345):**
+
+| Проверка | Статус |
+|---|---|
+| Flyway: `flyway_schema_history` = init 1, seed 2, success=t | OK |
+| `geometry`: `geo-12345` (Steel 20Kh, 1000.0, complexity=2), `geo-test` (AlSi10Mg, 2500.0, complexity=4) | OK |
+| Лог `GeometryService: found geometry objectRef=geo-12345, volume=1000.0000, complexity=2` | OK |
+| `state = TOOLING_DESIGN` | OK |
+
+**Ключевое:** `volume=1000.0, complexity=2` — **из БД** (seed). Stub по `hashCode("geo-12345")` вернул бы `1435.0, complexity=5`. **Stub заменён.**
+
+### Что осталось (TODO)
+
+1. **`equipment-service` → полный реестр** (JPA `EquipmentStatus`, `EquipmentTooling`, `EquipmentRequirement`, `EquipmentGapAnalysis` — V3+).
+2. **MinIO** — хранилище CAD-файлов (STL/STEP) вместо JSON-полей в БД — отдельная фича.
+3. **Flyway для остальных БД** — при добавлении новых миграций (все сервисы уже под Flyway).
