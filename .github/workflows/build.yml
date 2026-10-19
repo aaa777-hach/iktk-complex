@@ -20,7 +20,19 @@ jobs:
           cache: maven
 
       - name: Build and test
-        run: mvn -B -e -Dsurefire.useFile=false -DtrimStackTrace=false clean verify
+        run: |
+          set +e
+          mvn -B -e -Dsurefire.useFile=false -DtrimStackTrace=false clean verify 2>&1 | tee mvn.log
+          status=${PIPESTATUS[0]}
+          if [ $status -ne 0 ]; then
+            echo ""
+            echo "=== FAILED TESTS ==="
+            grep -B 2 -A 40 "<<< ERROR\|<<< FAILURE" mvn.log || true
+            echo ""
+            echo "=== CAUSED BY ==="
+            grep -A 20 "Caused by:" mvn.log || true
+          fi
+          exit $status
 
       - name: Print surefire reports on failure
         if: failure()
