@@ -20,8 +20,15 @@ jobs:
           cache: maven
 
       - name: Build and test
-        run: mvn -B clean verify
+        run: mvn -B -e -Dsurefire.useFile=false -DtrimStackTrace=false clean verify
 
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports'
+          if-no-files-found: ignore
       - name: Upload JaCoCo reports
         if: always()
         uses: actions/upload-artifact@v4
