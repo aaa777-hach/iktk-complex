@@ -1,105 +1,34 @@
-# ============================================================
-# Maven
-# ============================================================
+﻿# Maven
 target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-
-# ============================================================
-# Gradle (если используется)
-# ============================================================
-.gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
-
-# ============================================================
-# Java / Build
-# ============================================================
-*.class
 *.jar
 *.war
 *.ear
-*.nar
-hs_err_pid*
-replay_pid*
 
-# ============================================================
 # IDE
-# ============================================================
 .idea/
 *.iml
-*.ipr
-*.iws
 .vscode/
 .settings/
-.project
 .classpath
-.factorypath
-*.swp
-*~
+.project
 
-# ============================================================
-# OS
-# ============================================================
-.DS_Store
-Thumbs.db
-Desktop.ini
-
-# ============================================================
-# Logs
-# ============================================================
-*.log
-logs/
-
-# ============================================================
-# Secrets / Local configs — НЕ КОММИТИТЬ!
-# ============================================================
-.env
-.env.local
-.env.*.local
-**/application-local.yml
-**/application-local.yaml
-**/application-local.properties
-**/application-secret.yml
-**/application-secret.yaml
-**/application-secret.properties
-
-# ============================================================
-# Docker
-# ============================================================
-docker-compose.override.yml
-# ============================================================
-# Node.js (для ui/)
-# ============================================================
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-dist/
-build/
-.next/
-out/
-.cache/
-coverage/
-*.tsbuildinfo
-.vite/
-# ============================================================
-# Office temp / lock files
-# ============================================================
-~$*
-.~lock.*
-*.tmp
+# Бэкапы и временные файлы
 *.bak
-*.swp
-*.swo
-# equipment-service full skeleton backup (local only)
-services/equipment-service/.bak-*/
+*.bak[0-9]*
+*.orig
+*.rej
+*.tmp
+*.log
 
+# Локальные скрипты-однодневки
+patch-*.ps1
+
+# Секреты и окружение
 .env
+.env.*
+!.env.example
+
+# Папки/файлы бэкапов (например .bak-20261018-132142)
+.bak-*
+*.bak-*
+**/.bak-*/
