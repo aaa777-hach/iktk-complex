@@ -977,3 +977,41 @@ Get-NetTCPConnection -LocalPort 8080,8090 -State Listen
 3. **`objectRef` → реальная геометрия** — сейчас `geo-12345` (тест), в проде — из `geometry-service`.
 4. **Flyway/Liquibase** — вместо `ddl-auto: update` в dev и `validate` в prod (миграции как код).
 5. **`application-prod.yml` в `core`** — общие настройки (если нужно).
+
+---
+
+## 2026-10-19 — equipment-service: JPA + Flyway + реальная БД
+
+**Проблема:** `equipment-service` был **stub** — `isMethodAvailable` возвращал `true` для `SAND/INVESTMENT/DIE/GRAVITY_CASTING` **независимо** от оборудования.
+
+**Решение:**
+
+- **`V1__init.sql`** (iktk_equipment): `equipment`, `equipment_capabilities`, `equipment_capability_materials`;
+- **`V2__seed.sql`**: 1 `equipment` (`eq-casting-01`, `CASTING_MACHINE`, `AVAILABLE`) + 5 `capabilities` (все `CastingMethod`);
+- **`EquipmentRepository.existsAvailableByOperation`** — JPQL `JOIN equipment + capabilities WHERE operation_type = :method AND status = 'AVAILABLE'`;
+- **`EquipmentService.isMethodAvailable`** — вызов репозитория (не stub);
+- **`EquipmentController`** — `switch` → `equipmentService.isMethodAvailable(method)`;
+- **`Equipment` entity** — `mappedBy = "equipment"`, `@OneToOne currentStatus` удалён;
+- **`EquipmentStatusEnum`** — `AVAILABLE/BUSY/MAINTENANCE/DECOMMISSIONED`;
+- **`pom.xml`** — JPA + PostgreSQL + Flyway + Validation;
+- **`application.yml`** — datasource `iktk_equipment`, `ddl-auto: validate`, `flyway.enabled: true`.
+
+**Коммиты:** `8e2d9b9` (equipment), `2b901f4` (flyway orchestrator/casting — восстановление), `a1c5198` (iktk-start.ps1).
+
+**E2E-подтверждение (projectId 5ca4debb-...):**
+
+| Проверка | Статус |
+|---|---|
+| Flyway: `Successfully applied 2 migrations` | OK |
+| Hibernate `validate` — `Initialized JPA EntityManagerFactory` | OK |
+| `equipment`: 1 строка (`CASTING_MACHINE`, `AVAILABLE`) | OK |
+| `equipment_capabilities`: 5 строк (все `CastingMethod`) | OK |
+| Лог `EquipmentService: isMethodAvailable operationType=INVESTMENT_CASTING, available=true` | OK |
+| `state = TOOLING_DESIGN` | OK |
+
+**Ключевое:** `available` теперь **из БД**. Старый stub всегда возвращал `true` — новый зависит от `equipment.status` + `capabilities.operation_type`. Цепочка `Controller -> Service -> Repository -> DB` видна в логах (3 уровня логирования).
+
+### Что осталось (TODO)
+
+1. **`integration` → реальные данные** (MinIO/БД `iktk_geometry`) — сейчас stub по `objectRef.hashCode()`. **Следующий приоритет.**
+2. **`equipment-service` → полный реестр** (JPA `EquipmentStatus`, `EquipmentTooling`, `EquipmentRequirement`, `EquipmentGapAnalysis` — V3+).
