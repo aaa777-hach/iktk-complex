@@ -25,29 +25,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Основной сервис оркестрации ИКТК.
- *
- * <p>Отвечает за:
- * <ul>
- *   <li>создание проекта и инициализацию конечного автомата;</li>
- *   <li>анализ текущего состояния и выбор следующего этапа ТПП;</li>
- *   <li>передачу управления профильным модулям и сервисам через очереди;</li>
- *   <li>обработку результатов и событий от модулей;</li>
- *   <li>поддержку точек контроля (approve, adjust, outsource);</li>
- *   <li>откат к предыдущей версии/состоянию;</li>
- *   <li>журналирование всех решений через {@link DecisionLogService}.</li>
- * </ul>
- *
- * <p>Режим — смешанный: автоматические переходы выполняются сразу,
- * точки контроля ожидают внешнего события (approve / sendEvent).
- */
 @Service
 public class OrchestrationService {
 
     private static final Logger log = LoggerFactory.getLogger(OrchestrationService.class);
 
-    /** Политика повторных попыток при отказе внешнего модуля. */
     private static final int MAX_RETRIES = 3;
 
     private final StateMachineFactory<ProjectState, ProjectEvent> stateMachineFactory;
@@ -56,10 +38,6 @@ public class OrchestrationService {
     private final TransitionHandler transitionHandler;
     private final DecisionLogService decisionLogService;
 
-    /**
-     * Реестр активных автоматов: projectId → StateMachine.
-     * Для горизонтального масштабирования состояние восстанавливается из БД.
-     */
     private final Map<String, StateMachine<ProjectState, ProjectEvent>> machines =
             new ConcurrentHashMap<>();
 
@@ -75,13 +53,6 @@ public class OrchestrationService {
         this.decisionLogService = decisionLogService;
     }
 
-    // ------------------------------------------------------------------
-    // Создание и запуск проекта
-    // ------------------------------------------------------------------
-
-    /**
-     * Создать новый проект и запустить оркестрацию.
-     */
     @Transactional
     public OrchestrationResponse startProject(OrchestrationRequest request) {
         validateRequest(request);
@@ -105,7 +76,6 @@ public class OrchestrationService {
         StateMachine<ProjectState, ProjectEvent> sm = obtainMachine(projectId, ProjectState.PROJECT_INIT);
         sm.startReactively().block();
 
-        // Автоматический переход: PROJECT_INIT → GEOMETRY_INPUT
         dispatchEvent(projectId, sm, ProjectEvent.START_GEOMETRY_INPUT, null);
 
         decisionLogService.log(projectId, "PROJECT_STARTED",
@@ -114,9 +84,6 @@ public class OrchestrationService {
         return buildResponse(runtime, sm);
     }
 
-    /**
-     * Продолжить оркестрацию: определить следующий этап и передать управление.
-     */
     @Transactional
     public OrchestrationResponse run(String projectId) {
         ProjectRuntime runtime = loadRuntime(projectId);
@@ -124,7 +91,6 @@ public class OrchestrationService {
 
         log.info("run: projectId={}, currentState={}", projectId, runtime.getState());
 
-        // Передать управление профильному модулю по текущему состоянию
         transitionHandler.route(projectId, runtime.getState(), sm, runtime.getPayload());
 
         decisionLogService.log(projectId, "ORCHESTRATION_RUN",
@@ -132,10 +98,6 @@ public class OrchestrationService {
 
         return buildResponse(runtime, sm);
     }
-
-    // ------------------------------------------------------------------
-    // Состояние и сводка
-    // ------------------------------------------------------------------
 
     public ProjectState getState(String projectId) {
         ProjectRuntime runtime = loadRuntime(projectId);
@@ -148,13 +110,6 @@ public class OrchestrationService {
         return buildResponse(runtime, sm);
     }
 
-    // ------------------------------------------------------------------
-    // Точки контроля
-    // ------------------------------------------------------------------
-
-    /**
-     * Подтверждение текущего этапа: перевод на следующее автоматическое состояние.
-     */
     @Transactional
     public OrchestrationResponse approve(String projectId, String comment) {
         ProjectRuntime runtime = loadRuntime(projectId);
@@ -180,9 +135,6 @@ public class OrchestrationService {
         return buildResponse(loadRuntime(projectId), sm);
     }
 
-    /**
-     * Отправить внешнее событие в автомат проекта.
-     */
     @Transactional
     public OrchestrationResponse sendEvent(String projectId,
                                            ProjectEvent event,
@@ -238,10 +190,6 @@ public class OrchestrationService {
                 merge(payload, "recommendationId", recommendationId));
     }
 
-    // ------------------------------------------------------------------
-    // Откат
-    // ------------------------------------------------------------------
-
     @Transactional
     public OrchestrationResponse rollback(String projectId, String version) {
         log.warn("rollback: projectId={}, version={}", projectId, version);
@@ -251,7 +199,6 @@ public class OrchestrationService {
                 .orElseThrow(() -> new OrchestrationException(
                         "Версия не найдена: " + version + " для проекта " + projectId));
 
-        // Сбрасываем автомат в сохранённое состояние
         StateMachine<ProjectState, ProjectEvent> sm = obtainMachine(projectId, runtime.getState());
         resetMachine(sm, runtime.getState());
 
@@ -261,13 +208,6 @@ public class OrchestrationService {
         return buildResponse(runtime, sm);
     }
 
-    // ------------------------------------------------------------------
-    // Обработка результатов от модулей (вызывается из Consumer)
-    // ------------------------------------------------------------------
-
-    /**
-     * Обработать результат, пришедший от внешнего модуля или сервиса.
-     */
     @Transactional
     public void onModuleResult(String projectId, ProjectEvent event,
                                Map<String, String> payload, boolean success) {
@@ -287,10 +227,6 @@ public class OrchestrationService {
                         "payload", payload == null ? Map.of() : payload), currentActor());
     }
 
-    // ------------------------------------------------------------------
-    // Внутренние методы
-    // ------------------------------------------------------------------
-
     private void handleModuleFailure(String projectId,
                                      StateMachine<ProjectState, ProjectEvent> sm,
                                      ProjectEvent event,
@@ -308,7 +244,6 @@ public class OrchestrationService {
         decisionLogService.log(projectId, "MODULE_FAILED",
                 Map.of("event", event.name(), "attempts", String.valueOf(attempt)), currentActor());
 
-        // Состояние «Ожидает решения» — точка контроля для инженера
         transitionHandler.moveToAwaitingDecision(sm, projectId, event);
     }
 
@@ -330,7 +265,6 @@ public class OrchestrationService {
         ProjectState newState = sm.getState().getId();
         persistState(projectId, sm, newState);
 
-        // Автоматический следующий переход, если это не точка контроля
         if (transitionHandler.isAutoState(newState)) {
             ProjectEvent autoEvent = transitionHandler.nextAuto(newState);
             if (autoEvent != null) {
@@ -405,14 +339,10 @@ public class OrchestrationService {
         return result;
     }
 
-    /** Для диагностики. */
     public List<String> activeProjects() {
         return List.copyOf(machines.keySet());
     }
-    /**
-     * Получить actor из текущего HTTP-запроса (заголовок X-User-Id, который подставляет gateway).
-     * Для вызовов вне HTTP-контекста (например, из RabbitMQ-консьюмера) — возвращает "SYSTEM".
-     */
+
     private String currentActor() {
         try {
             ServletRequestAttributes attrs =
@@ -424,7 +354,6 @@ public class OrchestrationService {
                 }
             }
         } catch (Exception ignored) {
-            // вне HTTP-запроса
         }
         return "SYSTEM";
     }
