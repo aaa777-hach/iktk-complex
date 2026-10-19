@@ -140,4 +140,69 @@ class ModuleResultConsumerTest {
         verify(decisionLogService).log(
                 eq("UNKNOWN"), eq("MODULE_RESULT_DLQ"), any(Map.class), eq("SYSTEM"));
     }
+
+    // ====== PATCHED_MESSAGING_EXTRA ======
+
+    @Test
+    @DisplayName("payload-массив: значения сериализуются в JSON-строку")
+    void onResult_payloadWithArray_serialized() {
+        String body = "{\"projectId\":\"p1\",\"event\":\"NORMS_READY\","
+                + "\"payload\":{\"items\":[{\"id\":1},{\"id\":2}]}}";
+        consumer.onResult(message(body, Map.of()), "r", null);
+
+        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(orchestrationService).onModuleResult(eq("p1"), eq(ProjectEvent.NORMS_READY),
+                captor.capture(), eq(true));
+        assertThat(captor.getValue().get("items")).contains("[", "{\"id\":1}");
+    }
+
+    @Test
+    @DisplayName("длинное тело сообщения обрезается до 500 символов + …")
+    void onResult_longBody_truncatedInLog() {
+        String longBody = "{\"event\":\"NORMS_READY\",\"x\":\"" + "a".repeat(1000) + "\"}";
+
+        assertThatThrownBy(() -> consumer.onResult(message(longBody, Map.of()), "r", null))
+                .isInstanceOf(OrchestrationException.class);
+
+        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(decisionLogService).log(eq("UNKNOWN"), eq("MODULE_RESULT_REJECTED"), captor.capture());
+        String loggedBody = captor.getValue().get("body");
+        assertThat(loggedBody.length()).isLessThanOrEqualTo(501);
+        assertThat(loggedBody).endsWith("…");
+    }
+
+    @Test
+    @DisplayName("невалидный JSON -> OrchestrationException с routingKey в сообщении")
+    void onResult_invalidJson_throws() {
+        Message msg = message("not a json {", Map.of());
+
+        assertThatThrownBy(() -> consumer.onResult(msg, "iktk.result.bad", "c-1"))
+                .isInstanceOf(OrchestrationException.class)
+                .hasMessageContaining("iktk.result.bad");
+    }
+
+    @Test
+    @DisplayName("success=false в JSON (без заголовка) -> onModuleResult(...,false)")
+    void onResult_successFromJson_used() {
+        String body = "{\"projectId\":\"p1\",\"event\":\"NORMS_READY\",\"success\":false}";
+        consumer.onResult(message(body, Map.of()), "r", null);
+
+        verify(orchestrationService).onModuleResult(eq("p1"), eq(ProjectEvent.NORMS_READY),
+                any(), eq(false));
+    }
+
+    @Test
+    @DisplayName("onDeadLetter: длинное тело обрезается, projectId из заголовка")
+    void onDeadLetter_longBody_truncated() {
+        String body = "{\"big\":\"" + "x".repeat(1000) + "\"}";
+        Message msg = message(body, Map.of(
+                "projectId", "p-9", "module", "casting", "event", "CASTING_DONE"));
+
+        consumer.onDeadLetter(msg, "iktk.orchestrator.results.dlq");
+
+        ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(decisionLogService).log(eq("p-9"), eq("MODULE_RESULT_DLQ"), captor.capture(), eq("SYSTEM"));
+        String loggedBody = captor.getValue().get("body");
+        assertThat(loggedBody.length()).isLessThanOrEqualTo(501);
+    }
 }
