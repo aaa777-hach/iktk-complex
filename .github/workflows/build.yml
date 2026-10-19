@@ -20,24 +20,23 @@ jobs:
           cache: maven
 
       - name: Build and test
+        id: mvn
+        continue-on-error: true
         run: |
-          set +e
-          mvn -B -e -Dsurefire.useFile=false -DtrimStackTrace=false clean verify 2>&1 | tee mvn.log
-          status=${PIPESTATUS[0]}
-          if [ $status -ne 0 ]; then
-            echo ""
-            echo "=== FAILED TESTS ==="
-            grep -B 2 -A 40 "<<< ERROR\|<<< FAILURE" mvn.log || true
-            echo ""
-            echo "=== CAUSED BY ==="
-            grep -A 20 "Caused by:" mvn.log || true
-          fi
-          exit $status
+          mvn -B -Duser.language=en -Duser.country=US clean verify 2>&1 | tee mvn.log
 
-      - name: Print surefire reports on failure
-        if: failure()
+      - name: Show failures
+        if: steps.mvn.outcome == 'failure'
         run: |
-          find . -path '*/target/surefire-reports/*.txt' -print -exec cat {} \;
+          echo "=== SUREFIRE REPORTS ==="
+          find . -path '*/target/surefire-reports/*.txt' -print -exec cat {} \; || true
+          echo ""
+          echo "=== TAIL OF MVN LOG (last 200 lines) ==="
+          tail -200 mvn.log || true
+
+      - name: Fail build
+        if: steps.mvn.outcome == 'failure'
+        run: exit 1
       - name: Upload surefire reports
         if: always()
         uses: actions/upload-artifact@v4
