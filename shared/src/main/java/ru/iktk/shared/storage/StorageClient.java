@@ -109,7 +109,7 @@ public class StorageClient {
     private static final long PART_SIZE_UNKNOWN = -1;
 
     /** Максимальное число объектов в одном list-запросе. */
-    private static final int MAX_LIST_RESULTS = 10_000;
+    private static final int MAX_LIST_RESULTS = 1000; // MinIO: maxKeys не больше 1000, пагинация автоматическая
 
     @Value("${iktk.storage.bucket:iktk-files}")
     private String defaultBucket;
