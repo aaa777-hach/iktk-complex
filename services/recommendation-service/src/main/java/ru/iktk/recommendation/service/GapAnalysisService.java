@@ -17,7 +17,6 @@ import ru.iktk.recommendation.model.EquipmentRequirement;
 import ru.iktk.recommendation.repository.EquipmentGapAnalysisRepository;
 import ru.iktk.recommendation.repository.EquipmentRequirementRepository;
 import ru.iktk.recommendation.repository.EquipmentRecommendationRepository;
-import ru.iktk.shared.versioning.VersioningService;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -81,7 +80,6 @@ public class GapAnalysisService {
     private final RecommendationMapper mapper;
     private final EquipmentClient equipmentClient;
     private final EquipmentRecommendationService recommendationService;
-    private final VersioningService versioningService;
     private final RecommendationProperties properties;
 
     public GapAnalysisService(EquipmentGapAnalysisRepository gapRepository,
@@ -90,7 +88,6 @@ public class GapAnalysisService {
                               RecommendationMapper mapper,
                               EquipmentClient equipmentClient,
                               EquipmentRecommendationService recommendationService,
-                              VersioningService versioningService,
                               RecommendationProperties properties) {
         this.gapRepository = gapRepository;
         this.requirementRepository = requirementRepository;
@@ -98,7 +95,6 @@ public class GapAnalysisService {
         this.mapper = mapper;
         this.equipmentClient = equipmentClient;
         this.recommendationService = recommendationService;
-        this.versioningService = versioningService;
         this.properties = properties;
     }
 
@@ -204,16 +200,7 @@ public class GapAnalysisService {
             analysis.setRecommendationsCount(recommendations.size());
             gapRepository.save(analysis);
 
-            versioningService.createVersion(
-                    "GAP_ANALYSIS",
-                    UUID.fromString(analysisId),
-                    UUID.fromString(projectId),
-                    mapper.toJsonNode(analysis),
-                    VersioningService.ChangeType.CREATE,
-                    "Gap-анализ выполнен: " + gaps.size() + " дефицитов",
-                    "system");
-
-            log.info("run done: projectId={}, analysisId={}, gaps={}, recommendations={}",
+                        log.info("run done: projectId={}, analysisId={}, gaps={}, recommendations={}",
                     projectId, analysisId, gaps.size(), recommendations.size());
 
             return mapper.toGapResponse(analysis);

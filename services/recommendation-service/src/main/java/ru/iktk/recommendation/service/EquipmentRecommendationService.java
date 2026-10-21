@@ -17,7 +17,6 @@ import ru.iktk.recommendation.model.VendorCatalog;
 import ru.iktk.recommendation.repository.EquipmentGapAnalysisRepository;
 import ru.iktk.recommendation.repository.EquipmentRecommendationRepository;
 import ru.iktk.recommendation.repository.VendorCatalogRepository;
-import ru.iktk.shared.versioning.VersioningService;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -72,7 +71,6 @@ public class EquipmentRecommendationService {
     private final VendorCatalogRepository vendorRepository;
     private final RecommendationMapper mapper;
     private final EquipmentClient equipmentClient;
-    private final VersioningService versioningService;
     private final RecommendationProperties properties;
 
     public EquipmentRecommendationService(EquipmentRecommendationRepository recommendationRepository,
@@ -80,14 +78,12 @@ public class EquipmentRecommendationService {
                                           VendorCatalogRepository vendorRepository,
                                           RecommendationMapper mapper,
                                           EquipmentClient equipmentClient,
-                                          VersioningService versioningService,
                                           RecommendationProperties properties) {
         this.recommendationRepository = recommendationRepository;
         this.gapRepository = gapRepository;
         this.vendorRepository = vendorRepository;
         this.mapper = mapper;
         this.equipmentClient = equipmentClient;
-        this.versioningService = versioningService;
         this.properties = properties;
     }
 
@@ -437,16 +433,7 @@ public class EquipmentRecommendationService {
             log.warn("accept: не удалось назначить оборудование: {}", e.getMessage());
         }
 
-        versioningService.createVersion(
-                "RECOMMENDATION",
-                UUID.fromString(recommendationId),
-                UUID.fromString(rec.getProjectId()),
-                mapper.toJsonNode(rec),
-                VersioningService.ChangeType.APPROVE,
-                comment == null ? "Рекомендация принята" : comment,
-                "system");
-
-        log.info("accept: recommendationId={}, type={}, equipmentId={}",
+                log.info("accept: recommendationId={}, type={}, equipmentId={}",
                 recommendationId, rec.getType(), rec.getEquipmentId());
 
         return RecommendationResponse.builder()

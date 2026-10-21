@@ -21,7 +21,6 @@ import ru.iktk.recommendation.model.VendorCatalog;
 import ru.iktk.recommendation.repository.EquipmentGapAnalysisRepository;
 import ru.iktk.recommendation.repository.EquipmentRecommendationRepository;
 import ru.iktk.recommendation.repository.VendorCatalogRepository;
-import ru.iktk.shared.versioning.VersioningService;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -44,7 +43,6 @@ class EquipmentRecommendationServiceBoostTest {
     @Mock private VendorCatalogRepository vendorRepository;
     @Mock private RecommendationMapper mapper;
     @Mock private EquipmentClient equipmentClient;
-    @Mock private VersioningService versioningService;
     @Mock private RecommendationProperties properties;
 
     @InjectMocks private EquipmentRecommendationService service;

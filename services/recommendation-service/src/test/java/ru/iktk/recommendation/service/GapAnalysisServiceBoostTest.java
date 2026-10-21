@@ -18,7 +18,6 @@ import ru.iktk.recommendation.model.EquipmentGapAnalysis;
 import ru.iktk.recommendation.model.EquipmentGapAnalysis.Gap;
 import ru.iktk.recommendation.repository.EquipmentGapAnalysisRepository;
 import ru.iktk.recommendation.repository.EquipmentRecommendationRepository;
-import ru.iktk.shared.versioning.VersioningService;
 
 import java.util.List;
 import java.util.Optional;
@@ -36,7 +35,6 @@ class GapAnalysisServiceBoostTest {
     @Mock private EquipmentRecommendationRepository recommendationRepository;
     @Mock private RecommendationMapper mapper;
     @Mock private EquipmentClient equipmentClient;
-    @Mock private VersioningService versioningService;
     @Mock private RecommendationProperties properties;
 
     @InjectMocks private GapAnalysisService service;

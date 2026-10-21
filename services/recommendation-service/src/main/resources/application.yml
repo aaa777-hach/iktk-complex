@@ -5,7 +5,7 @@ spring:
   application:
     name: recommendation-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/iktk_recommendation
+    url: jdbc:postgresql://localhost:5433/iktk_recommendation
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
@@ -23,8 +23,9 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USER:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    username: ${RABBITMQ_USER:iktk}
+    password: ${RABBITMQ_PASSWORD:iktk_dev_password}
+    virtual-host: ${RABBITMQ_VHOST:/iktk}
 
 iktk:
   messaging:
