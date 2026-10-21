@@ -209,7 +209,7 @@ public class AssemblyUnit {
     // Конструкторы
     // ------------------------------------------------------------------
 
-    protected AssemblyUnit() {
+    public AssemblyUnit() {
     }
 
     public AssemblyUnit(String id, String projectId, String designation) {
@@ -440,6 +440,9 @@ public class AssemblyUnit {
 
     public List<AssemblyConnection> getConnections() { return connections; }
     public void setConnections(List<AssemblyConnection> connections) { this.connections = connections; }
+
+    public void setCreatedAt(java.time.Instant createdAt) { this.createdAt = createdAt; }
+    public void setUpdatedAt(java.time.Instant updatedAt) { this.updatedAt = updatedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

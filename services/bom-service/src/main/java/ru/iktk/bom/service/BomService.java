@@ -19,7 +19,7 @@ import ru.iktk.bom.model.AssemblyConnection;
 import ru.iktk.bom.model.AssemblyUnit;
 import ru.iktk.bom.model.BomItem;
 import ru.iktk.bom.repository.AssemblyConnectionRepository;
-import ru.iktk.bom.repository.AssemblyUnitRepository;
+import ru.iktk.bom.repository.AssemblyRepository;
 import ru.iktk.bom.repository.BomItemRepository;
 import ru.iktk.shared.storage.StorageClient;
 import ru.iktk.shared.versioning.VersioningService;
@@ -72,7 +72,7 @@ public class BomService {
 
     private static final int MAX_TREE_DEPTH = 20;
 
-    private final AssemblyUnitRepository assemblyRepository;
+    private final AssemblyRepository assemblyRepository;
     private final BomItemRepository itemRepository;
     private final AssemblyConnectionRepository connectionRepository;
     private final BomMapper mapper;
@@ -82,7 +82,7 @@ public class BomService {
     private final VersioningService versioningService;
     private final BomProperties properties;
 
-    public BomService(AssemblyUnitRepository assemblyRepository,
+    public BomService(AssemblyRepository assemblyRepository,
                       BomItemRepository itemRepository,
                       AssemblyConnectionRepository connectionRepository,
                       BomMapper mapper,

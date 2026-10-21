@@ -36,7 +36,7 @@
 
     <!-- Недописанные модули: временно исключены из сборки -->
     <module>services/equipment-service</module>
-    <!-- <module>services/bom-service</module> -->
+    <module>services/bom-service</module>
     <module>modules/assembly-process-service</module>
     <!-- <module>services/recommendation-service</module> -->
     </modules>

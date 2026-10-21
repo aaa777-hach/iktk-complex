@@ -1,0 +1,52 @@
+server:
+  port: 8097
+
+spring:
+  application:
+    name: bom-service
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/iktk_bom
+    username: ${POSTGRES_USER:iktk_app}
+    password: ${POSTGRES_PASSWORD:iktk_dev_password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:iktk}
+    password: ${RABBITMQ_PASSWORD:iktk_dev_password}
+    virtual-host: ${RABBITMQ_VHOST:/iktk}
+    listener:
+      simple:
+        missing-queues-fatal: false
+
+iktk:
+  bom:
+    max-depth: 20
+    retry-count: 3
+    cad-systems: [SIEMENS, DASSAULT, T_FLEX, KOMPAS]
+    integration-url: http://localhost:8095
+    demo-fallback: false
+    default-strategy: SEQUENTIAL
+  messaging:
+    commands-queue: iktk.bom-service.queue
+    results-queue: iktk.results
+  equipment:
+    url: http://localhost:8094
+  integration:
+    url: http://localhost:8095

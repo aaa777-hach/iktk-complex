@@ -204,7 +204,7 @@ public class BomItem {
     // Конструкторы
     // ------------------------------------------------------------------
 
-    protected BomItem() {
+    public BomItem() {
     }
 
     public BomItem(String id, String assemblyId, String designation, String name) {
@@ -432,6 +432,9 @@ public class BomItem {
 
     public Map<String, Object> getParameters() { return parameters; }
     public void setParameters(Map<String, Object> parameters) { this.parameters = parameters; touch(); }
+
+    public void setCreatedAt(java.time.Instant createdAt) { this.createdAt = createdAt; }
+    public void setUpdatedAt(java.time.Instant updatedAt) { this.updatedAt = updatedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

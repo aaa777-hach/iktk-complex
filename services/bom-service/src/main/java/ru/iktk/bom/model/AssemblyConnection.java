@@ -224,7 +224,7 @@ public class AssemblyConnection {
     // Конструкторы
     // ------------------------------------------------------------------
 
-    protected AssemblyConnection() {
+    public AssemblyConnection() {
     }
 
     public AssemblyConnection(String id, String assemblyId,
@@ -483,6 +483,9 @@ public class AssemblyConnection {
 
     public String getNote() { return note; }
     public void setNote(String note) { this.note = note; touch(); }
+
+    public void setCreatedAt(java.time.Instant createdAt) { this.createdAt = createdAt; }
+    public void setUpdatedAt(java.time.Instant updatedAt) { this.updatedAt = updatedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
