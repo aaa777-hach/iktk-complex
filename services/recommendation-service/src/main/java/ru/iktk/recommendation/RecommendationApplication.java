@@ -3,6 +3,7 @@ package ru.iktk.recommendation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
+import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -18,64 +19,64 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 
 /**
- * Точка входа сервиса рекомендаций ИКТК.
+ * РўРѕС‡РєР° РІС…РѕРґР° СЃРµСЂРІРёСЃР° СЂРµРєРѕРјРµРЅРґР°С†РёР№ РРљРўРљ.
  *
- * <p>Сервис {@code recommendation-service} отвечает за:
+ * <p>РЎРµСЂРІРёСЃ {@code recommendation-service} РѕС‚РІРµС‡Р°РµС‚ Р·Р°:
  * <ul>
- *   <li>gap-анализ: сопоставление требований ТП с парком
- *       оборудования и выявление дефицита;</li>
- *   <li>формирование рекомендаций при дефиците:
- *       альтернативное имеющееся оборудование, докупка, аренда,
- *       аутсорс, корректировка ТП;</li>
- *   <li>скоринг вариантов по производительности, загрузке,
- *       стоимости, срокам;</li>
- *   <li>поиск в каталоге внешнего оборудования
+ *   <li>gap-Р°РЅР°Р»РёР·: СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРёРµ С‚СЂРµР±РѕРІР°РЅРёР№ РўРџ СЃ РїР°СЂРєРѕРј
+ *       РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ Рё РІС‹СЏРІР»РµРЅРёРµ РґРµС„РёС†РёС‚Р°;</li>
+ *   <li>С„РѕСЂРјРёСЂРѕРІР°РЅРёРµ СЂРµРєРѕРјРµРЅРґР°С†РёР№ РїСЂРё РґРµС„РёС†РёС‚Рµ:
+ *       Р°Р»СЊС‚РµСЂРЅР°С‚РёРІРЅРѕРµ РёРјРµСЋС‰РµРµСЃСЏ РѕР±РѕСЂСѓРґРѕРІР°РЅРёРµ, РґРѕРєСѓРїРєР°, Р°СЂРµРЅРґР°,
+ *       Р°СѓС‚СЃРѕСЂСЃ, РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєР° РўРџ;</li>
+ *   <li>СЃРєРѕСЂРёРЅРі РІР°СЂРёР°РЅС‚РѕРІ РїРѕ РїСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚Рё, Р·Р°РіСЂСѓР·РєРµ,
+ *       СЃС‚РѕРёРјРѕСЃС‚Рё, СЃСЂРѕРєР°Рј;</li>
+ *   <li>РїРѕРёСЃРє РІ РєР°С‚Р°Р»РѕРіРµ РІРЅРµС€РЅРµРіРѕ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ
  *       ({@code vendor_catalog});</li>
- *   <li>формирование вариантов аутсорса
+ *   <li>С„РѕСЂРјРёСЂРѕРІР°РЅРёРµ РІР°СЂРёР°РЅС‚РѕРІ Р°СѓС‚СЃРѕСЂСЃР°
  *       ({@code outsourcing_options});</li>
- *   <li>предоставление рекомендаций для точки контроля
- *       {@code RECOMMENDATION_REVIEW} оркестратора.</li>
+ *   <li>РїСЂРµРґРѕСЃС‚Р°РІР»РµРЅРёРµ СЂРµРєРѕРјРµРЅРґР°С†РёР№ РґР»СЏ С‚РѕС‡РєРё РєРѕРЅС‚СЂРѕР»СЏ
+ *       {@code RECOMMENDATION_REVIEW} РѕСЂРєРµСЃС‚СЂР°С‚РѕСЂР°.</li>
  * </ul>
  *
- * <p><b>Модель данных.</b> Ключевые таблицы (миграция V6):
+ * <p><b>РњРѕРґРµР»СЊ РґР°РЅРЅС‹С….</b> РљР»СЋС‡РµРІС‹Рµ С‚Р°Р±Р»РёС†С‹ (РјРёРіСЂР°С†РёСЏ V6):
  * <ul>
- *   <li>{@code equipment_requirements} — требования к оборудованию
- *       из ТП;</li>
- *   <li>{@code equipment_gap_analysis} — результаты gap-анализа;</li>
- *   <li>{@code equipment_recommendations} — рекомендации;</li>
- *   <li>{@code vendor_catalog} — каталог внешнего оборудования;</li>
- *   <li>{@code outsourcing_options} — варианты аутсорса.</li>
+ *   <li>{@code equipment_requirements} вЂ” С‚СЂРµР±РѕРІР°РЅРёСЏ Рє РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЋ
+ *       РёР· РўРџ;</li>
+ *   <li>{@code equipment_gap_analysis} вЂ” СЂРµР·СѓР»СЊС‚Р°С‚С‹ gap-Р°РЅР°Р»РёР·Р°;</li>
+ *   <li>{@code equipment_recommendations} вЂ” СЂРµРєРѕРјРµРЅРґР°С†РёРё;</li>
+ *   <li>{@code vendor_catalog} вЂ” РєР°С‚Р°Р»РѕРі РІРЅРµС€РЅРµРіРѕ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ;</li>
+ *   <li>{@code outsourcing_options} вЂ” РІР°СЂРёР°РЅС‚С‹ Р°СѓС‚СЃРѕСЂСЃР°.</li>
  * </ul>
  *
- * <p><b>Взаимодействие с оркестратором.</b> Сервис вызывается
- * оркестратором (позиция 4) на этапе
- * {@code EQUIPMENT_GAP_RESOLUTION}. Команда содержит
- * {@code projectId}, {@code state}, {@code payload} с требованиями
- * к оборудованию. Результат публикуется с событием
+ * <p><b>Р’Р·Р°РёРјРѕРґРµР№СЃС‚РІРёРµ СЃ РѕСЂРєРµСЃС‚СЂР°С‚РѕСЂРѕРј.</b> РЎРµСЂРІРёСЃ РІС‹Р·С‹РІР°РµС‚СЃСЏ
+ * РѕСЂРєРµСЃС‚СЂР°С‚РѕСЂРѕРј (РїРѕР·РёС†РёСЏ 4) РЅР° СЌС‚Р°РїРµ
+ * {@code EQUIPMENT_GAP_RESOLUTION}. РљРѕРјР°РЅРґР° СЃРѕРґРµСЂР¶РёС‚
+ * {@code projectId}, {@code state}, {@code payload} СЃ С‚СЂРµР±РѕРІР°РЅРёСЏРјРё
+ * Рє РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЋ. Р РµР·СѓР»СЊС‚Р°С‚ РїСѓР±Р»РёРєСѓРµС‚СЃСЏ СЃ СЃРѕР±С‹С‚РёРµРј
  * {@code RECOMMENDATIONS_READY}.
  *
- * <p><b>Взаимодействие с другими сервисами.</b>
+ * <p><b>Р’Р·Р°РёРјРѕРґРµР№СЃС‚РІРёРµ СЃ РґСЂСѓРіРёРјРё СЃРµСЂРІРёСЃР°РјРё.</b>
  * <ul>
- *   <li>{@code orchestrator} — заказчик gap-анализа и рекомендаций;</li>
- *   <li>{@code equipment-service} (позиции 72–79) — источник данных
- *       о парке предприятия;</li>
- *   <li>{@code casting}, {@code forging}, {@code machining} — источники
- *       требований к оборудованию (через {@code stage_equipment_requirements});</li>
- *   <li>{@code postgres} — хранилище рекомендаций;</li>
- *   <li>{@code rabbitmq} — обмен командами и результатами.</li>
+ *   <li>{@code orchestrator} вЂ” Р·Р°РєР°Р·С‡РёРє gap-Р°РЅР°Р»РёР·Р° Рё СЂРµРєРѕРјРµРЅРґР°С†РёР№;</li>
+ *   <li>{@code equipment-service} (РїРѕР·РёС†РёРё 72вЂ“79) вЂ” РёСЃС‚РѕС‡РЅРёРє РґР°РЅРЅС‹С…
+ *       Рѕ РїР°СЂРєРµ РїСЂРµРґРїСЂРёСЏС‚РёСЏ;</li>
+ *   <li>{@code casting}, {@code forging}, {@code machining} вЂ” РёСЃС‚РѕС‡РЅРёРєРё
+ *       С‚СЂРµР±РѕРІР°РЅРёР№ Рє РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЋ (С‡РµСЂРµР· {@code stage_equipment_requirements});</li>
+ *   <li>{@code postgres} вЂ” С…СЂР°РЅРёР»РёС‰Рµ СЂРµРєРѕРјРµРЅРґР°С†РёР№;</li>
+ *   <li>{@code rabbitmq} вЂ” РѕР±РјРµРЅ РєРѕРјР°РЅРґР°РјРё Рё СЂРµР·СѓР»СЊС‚Р°С‚Р°РјРё.</li>
  * </ul>
  *
- * <p>Ключевые аннотации:
+ * <p>РљР»СЋС‡РµРІС‹Рµ Р°РЅРЅРѕС‚Р°С†РёРё:
  * <ul>
- *   <li>{@link SpringBootApplication} — автоконфигурация Spring Boot;</li>
- *   <li>{@link EnableJpaRepositories} — JPA-репозитории рекомендаций;</li>
- *   <li>{@link EntityScan} — сущности рекомендаций и общие доменные модели;</li>
- *   <li>{@link EnableAsync} — асинхронный gap-анализ (может быть длительным);</li>
- *   <li>{@link EnableScheduling} — плановые задачи (обновление каталога,
- *       retry, очистка устаревших рекомендаций);</li>
- *   <li>{@link EnableFeignClients} — REST-клиенты к orchestrator,
+ *   <li>{@link SpringBootApplication} вЂ” Р°РІС‚РѕРєРѕРЅС„РёРіСѓСЂР°С†РёСЏ Spring Boot;</li>
+ *   <li>{@link EnableJpaRepositories} вЂ” JPA-СЂРµРїРѕР·РёС‚РѕСЂРёРё СЂРµРєРѕРјРµРЅРґР°С†РёР№;</li>
+ *   <li>{@link EntityScan} вЂ” СЃСѓС‰РЅРѕСЃС‚Рё СЂРµРєРѕРјРµРЅРґР°С†РёР№ Рё РѕР±С‰РёРµ РґРѕРјРµРЅРЅС‹Рµ РјРѕРґРµР»Рё;</li>
+ *   <li>{@link EnableAsync} вЂ” Р°СЃРёРЅС…СЂРѕРЅРЅС‹Р№ gap-Р°РЅР°Р»РёР· (РјРѕР¶РµС‚ Р±С‹С‚СЊ РґР»РёС‚РµР»СЊРЅС‹Рј);</li>
+ *   <li>{@link EnableScheduling} вЂ” РїР»Р°РЅРѕРІС‹Рµ Р·Р°РґР°С‡Рё (РѕР±РЅРѕРІР»РµРЅРёРµ РєР°С‚Р°Р»РѕРіР°,
+ *       retry, РѕС‡РёСЃС‚РєР° СѓСЃС‚Р°СЂРµРІС€РёС… СЂРµРєРѕРјРµРЅРґР°С†РёР№);</li>
+ *   <li>{@link EnableFeignClients} вЂ” REST-РєР»РёРµРЅС‚С‹ Рє orchestrator,
  *       equipment-service;</li>
- *   <li>{@link EnableConfigurationProperties} — типизированные настройки.</li>
+ *   <li>{@link EnableConfigurationProperties} вЂ” С‚РёРїРёР·РёСЂРѕРІР°РЅРЅС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё.</li>
  * </ul>
  */
 @SpringBootApplication(scanBasePackages = {
@@ -91,6 +92,7 @@ import java.net.UnknownHostException;
 @EnableAsync
 @EnableScheduling
 @EnableFeignClients(basePackages = "ru.iktk.recommendation.client")
+@EnableRabbit
 @EnableConfigurationProperties(RecommendationProperties.class)
 public class RecommendationApplication {
 
@@ -121,18 +123,18 @@ public class RecommendationApplication {
         log.info("""
 
                 =========================================================
-                  ИКТК: сервис рекомендаций запущен
-                  Приложение     : {}
-                  Профиль        : {}
-                  Порт           : {}
-                  Хост           : {}
-                  Очередь cmd    : {}
-                  Очередь res    : {}
-                  Стратегия      : {}
-                  Веса скоринга  : {}
-                  Каталог внешн. : {}
-                  Аутсорс        : {}
-                  Внешний URL    : {}
+                  РРљРўРљ: СЃРµСЂРІРёСЃ СЂРµРєРѕРјРµРЅРґР°С†РёР№ Р·Р°РїСѓС‰РµРЅ
+                  РџСЂРёР»РѕР¶РµРЅРёРµ     : {}
+                  РџСЂРѕС„РёР»СЊ        : {}
+                  РџРѕСЂС‚           : {}
+                  РҐРѕСЃС‚           : {}
+                  РћС‡РµСЂРµРґСЊ cmd    : {}
+                  РћС‡РµСЂРµРґСЊ res    : {}
+                  РЎС‚СЂР°С‚РµРіРёСЏ      : {}
+                  Р’РµСЃР° СЃРєРѕСЂРёРЅРіР°  : {}
+                  РљР°С‚Р°Р»РѕРі РІРЅРµС€РЅ. : {}
+                  РђСѓС‚СЃРѕСЂСЃ        : {}
+                  Р’РЅРµС€РЅРёР№ URL    : {}
                 =========================================================
                 """,
                 appName,
@@ -149,7 +151,7 @@ public class RecommendationApplication {
     }
 
     // ------------------------------------------------------------------
-    // Утилиты
+    // РЈС‚РёР»РёС‚С‹
     // ------------------------------------------------------------------
 
     private static String hostname() {

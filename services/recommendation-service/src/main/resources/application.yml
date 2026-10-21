@@ -1,0 +1,57 @@
+server:
+  port: 8098
+
+spring:
+  application:
+    name: recommendation-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/iktk_recommendation
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+iktk:
+  messaging:
+    commands-exchange: iktk.commands
+    results-exchange: iktk.results
+    routing-prefix: iktk.command
+    commands-queue: iktk.recommendation-service.queue
+    results-queue: iktk.orchestrator.results.queue
+    results-routing-prefix: iktk.result
+  recommendation:
+    strategy: BALANCED
+    scoring:
+      weights: "cost=0.4,leadTime=0.3,quality=0.2,load=0.1"
+    vendor:
+      enabled: true
+    outsourcing:
+      enabled: true
+  clients:
+    equipment-service:
+      url: ${EQUIPMENT_SERVICE_URL:http://localhost:8085}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  level:
+    ru.iktk.recommendation: INFO

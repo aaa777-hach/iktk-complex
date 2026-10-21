@@ -34,11 +34,11 @@
     <!-- <module>modules/machining</module> -->
     <!-- <module>modules/norming</module> -->
 
-    <!-- Недописанные модули: временно исключены из сборки -->
+    <!-- РќРµРґРѕРїРёСЃР°РЅРЅС‹Рµ РјРѕРґСѓР»Рё: РІСЂРµРјРµРЅРЅРѕ РёСЃРєР»СЋС‡РµРЅС‹ РёР· СЃР±РѕСЂРєРё -->
     <module>services/equipment-service</module>
     <module>services/bom-service</module>
     <module>modules/assembly-process-service</module>
-    <!-- <module>services/recommendation-service</module> -->
+    <module>services/recommendation-service</module>
     </modules>
     <dependencyManagement>
         <dependencies>
