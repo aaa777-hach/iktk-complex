@@ -160,8 +160,14 @@ public class EquipmentRecommendationService {
         List<EquipmentRecommendation> result = new ArrayList<>();
 
         try {
+            List<Map<String, Object>> reqs = gap.getRequirements();
+            String requiredAccuracy = null;
+            if (reqs != null && !reqs.isEmpty()) {
+                Object acc = reqs.get(0).get("requiredAccuracy");
+                requiredAccuracy = acc == null ? null : String.valueOf(acc);
+            }
             List<Map<String, Object>> candidates = equipmentClient.findAlternatives(
-                    gap.getProjectId(), gap.getOperationType(), gap.getRequirements());
+                    gap.getOperationType(), requiredAccuracy, reqs);
 
             if (candidates == null || candidates.isEmpty()) {
                 return result;
@@ -426,8 +432,7 @@ public class EquipmentRecommendationService {
         // Назначаем оборудование на операции ТП
         try {
             if (rec.getEquipmentId() != null) {
-                equipmentClient.assignEquipment(
-                        rec.getProjectId(), rec.getEquipmentId(), rec.getGapId());
+                equipmentClient.assignEquipment(rec.getProjectId(), rec.getEquipmentId(), "system");
             }
         } catch (Exception e) {
             log.warn("accept: не удалось назначить оборудование: {}", e.getMessage());

@@ -51,6 +51,7 @@ public class VendorCatalog {
     private String region;
 
     @Column(name = "active", nullable = false)
+    @lombok.Builder.Default
     private Boolean active = Boolean.TRUE;
 
     @JdbcTypeCode(SqlTypes.JSON)

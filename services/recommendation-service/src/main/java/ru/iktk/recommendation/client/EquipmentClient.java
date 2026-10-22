@@ -12,11 +12,11 @@ import java.util.Optional;
 
 @FeignClient(
         name = "equipment-service",
-        url = "${iktk.clients.equipment-service.url:http://localhost:8085}"
+        url = "${iktk.clients.equipment-service.url:http://localhost:8094}"
 )
 public interface EquipmentClient {
 
-    @PostMapping("/api/equipment/capabilities/matching")
+    @PostMapping("/api/v1/equipment/capabilities/matching")
     Optional<Map<String, Object>> findMatching(
             @RequestParam("operationType") String operationType,
             @RequestParam("requiredAccuracy") String requiredAccuracy,
@@ -26,13 +26,13 @@ public interface EquipmentClient {
             @RequestParam("requiredPowerKw") BigDecimal requiredPowerKw,
             @RequestParam("requiredForceKn") String requiredForceKn);
 
-    @PostMapping("/api/equipment/capabilities/alternatives")
+    @PostMapping("/api/v1/equipment/capabilities/alternatives")
     List<Map<String, Object>> findAlternatives(
             @RequestParam("operationType") String operationType,
             @RequestParam("requiredAccuracy") String requiredAccuracy,
             @RequestBody List<Map<String, Object>> candidates);
 
-    @PostMapping("/api/equipment/assign")
+    @PostMapping("/api/v1/equipment/assign")
     void assignEquipment(
             @RequestParam("projectId") String projectId,
             @RequestParam("equipmentId") String equipmentId,

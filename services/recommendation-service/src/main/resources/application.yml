@@ -45,7 +45,7 @@ iktk:
       enabled: true
   clients:
     equipment-service:
-      url: ${EQUIPMENT_SERVICE_URL:http://localhost:8085}
+      url: ${EQUIPMENT_SERVICE_URL:http://localhost:8094}
 
 management:
   endpoints:

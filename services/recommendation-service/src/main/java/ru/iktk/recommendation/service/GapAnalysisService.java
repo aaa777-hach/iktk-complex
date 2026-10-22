@@ -183,17 +183,14 @@ public class GapAnalysisService {
             analysis.setStatus(STATUS_COMPLETED);
             gapRepository.save(analysis);
 
-            // 4. Автоматическое формирование рекомендаций
+             // 4. Автоматическое формирование рекомендаций
             List<EquipmentRecommendation> recommendations = new ArrayList<>();
             if (properties.isAutoGenerateRecommendations()) {
-                for (EquipmentGapAnalysis.Gap gap : gaps) {
-                    try {
-                        recommendations.addAll(
-                                recommendationService.generateForGap(gap.getId()));
-                    } catch (Exception e) {
-                        log.warn("run: не удалось сформировать рекомендации для gap={}: {}",
-                                gap.getId(), e.getMessage());
-                    }
+                try {
+                    recommendations = recommendationService.generateForGap(analysisId);
+                } catch (Exception e) {
+                    log.warn("run: не удалось сформировать рекомендации для analysis={}: {}",
+                            analysisId, e.getMessage());
                 }
             }
 
@@ -238,13 +235,15 @@ public class GapAnalysisService {
         try {
             // 1. Поиск подходящего оборудования
             Optional<Map<String, Object>> matched = equipmentClient.findMatching(
-                    requirement.getProjectId(),
                     requirement.getOperationType(),
                     requirement.getRequiredAccuracy(),
                     requirement.getMaxDimensions(),
                     requirement.getMaterial(),
+                    String.valueOf(requirement.isRequiredCnc()),
                     requirement.getRequiredPowerKw(),
-                    strategy);
+                    requirement.getRequiredForceKn() == null
+                            ? null
+                            : requirement.getRequiredForceKn().toPlainString());
 
             if (matched.isPresent()) {
                 // Оборудование найдено
