@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import feign.FeignException;
 import ru.iktk.recommendation.client.EquipmentClient;
 import ru.iktk.recommendation.config.RecommendationProperties;
 import ru.iktk.recommendation.dto.EquipmentRequirementDto;
@@ -116,7 +117,7 @@ public class GapAnalysisService {
      *       (если включено).</li>
      * </ol>
      */
-    @Transactional
+    @Transactional(noRollbackFor = RecommendationException.class)
     public GapAnalysisResponse run(GapAnalysisRequest request) {
         validate(request);
 
@@ -276,9 +277,12 @@ public class GapAnalysisService {
 
             return gap;
 
+                } catch (FeignException e) {
+            log.warn("matchRequirement: equipment-service error: {}", e.getMessage());
+            throw RecommendationException.gapAnalysisFailed(requirement.getProjectId(), e);
         } catch (Exception e) {
-            log.warn("matchRequirement: ошибка сопоставления: {}", e.getMessage());
-            return null;
+            log.error("matchRequirement: unexpected error", e);
+            throw RecommendationException.gapAnalysisFailed(requirement.getProjectId(), e);
         }
     }
 
