@@ -554,6 +554,10 @@ public class GapAnalysisService {
                         .maxDimensions(dto.getMaxDimensions())
                         .material(dto.getMaterial())
                         .requiredPowerKw(dto.getRequiredPowerKw())
+                        .requiredForceKn(dto.getRequiredForceKn())
+                        .requiredCnc(Boolean.TRUE.equals(dto.getRequiredCnc()))
+                        .quantity(dto.getQuantity() != null ? dto.getQuantity() : 1)
+                        .notes(dto.getNotes())
                         .createdAt(Instant.now())
                         .build());
             }

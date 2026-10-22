@@ -116,4 +116,26 @@ class GapAnalysisServiceMatchTest {
         assertThat(last.getGapsCount()).isZero();
         assertThat(last.getStatus()).isEqualTo("COMPLETED");
     }
+    @Test
+    @DisplayName("run: requiredCnc=true из DTO доходит до findMatching (аргумент requiredCnc=\"true\")")
+    void run_requiredCncTrue_propagatesToFindMatching() {
+        when(equipmentClient.findMatching(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Optional.empty());
+
+        GapAnalysisRequest req = new GapAnalysisRequest();
+        req.setProjectId("p1");
+        req.setStrategy("HYBRID");
+        req.setRequirements(List.of(EquipmentRequirementDto.builder()
+                .id("r1").operationType("TURNING").requiredAccuracy("IT7")
+                .requiredCnc(true)
+                .build()));
+
+        service.run(req);
+
+        org.mockito.ArgumentCaptor<String> cncCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(equipmentClient, atLeast(1)).findMatching(
+                any(), any(), any(), any(), cncCaptor.capture(), any(), any());
+        assertThat(cncCaptor.getAllValues()).contains("true");
+    }
 }
