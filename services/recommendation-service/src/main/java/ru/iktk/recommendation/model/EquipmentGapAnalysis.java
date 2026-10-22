@@ -290,7 +290,24 @@ public class EquipmentGapAnalysis {
     }
 
     public java.util.List<java.util.Map<String, Object>> getRequirements() {
-        return java.util.Collections.emptyList();
+        if (gaps == null || gaps.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>(gaps.size());
+        for (Gap g : gaps) {
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("operationType", g.getOperationType());
+            m.put("operationId", g.getOperationId());
+            m.put("requiredAccuracy", g.getRequiredAccuracy());
+            m.put("maxDimensions", g.getMaxDimensions());
+            m.put("material", g.getMaterial());
+            m.put("requiredPowerKw", g.getRequiredPowerKw());
+            m.put("requiredForceKn", g.getRequiredForceKn());
+            m.put("requiredCnc", g.isRequiredCnc());
+            m.put("severity", g.getSeverity());
+            result.add(m);
+        }
+        return result;
     }
     private void touch() {
         this.updatedAt = Instant.now();

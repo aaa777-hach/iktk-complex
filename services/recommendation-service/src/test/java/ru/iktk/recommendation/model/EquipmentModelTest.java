@@ -175,10 +175,39 @@ class EquipmentModelTest {
     }
 
     @Test
-    @DisplayName("EquipmentGapAnalysis: getRequirements возвращает пустой список")
-    void analysis_getRequirements() {
+    @DisplayName("EquipmentGapAnalysis: getRequirements возвращает пустой список при отсутствии gaps")
+    void analysis_getRequirements_empty() {
         EquipmentGapAnalysis a = new EquipmentGapAnalysis("a1", "p1", "HYBRID");
         assertThat(a.getRequirements()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("EquipmentGapAnalysis: getRequirements мапит поля Gap в Map")
+    void analysis_getRequirements_mapsFields() {
+        EquipmentGapAnalysis a = new EquipmentGapAnalysis("a1", "p1", "HYBRID");
+        Gap g = Gap.builder()
+                .id("g1").analysisId("a1").projectId("p1")
+                .operationType("TURNING").operationId("op1")
+                .requiredAccuracy("IT7").maxDimensions("1000x500x400")
+                .material("ST45")
+                .requiredPowerKw(new BigDecimal("15.5"))
+                .requiredForceKn(new BigDecimal("100"))
+                .requiredCnc(true)
+                .severity("CRITICAL")
+                .build();
+        a.addGap(g);
+        java.util.List<java.util.Map<String, Object>> reqs = a.getRequirements();
+        assertThat(reqs).hasSize(1);
+        java.util.Map<String, Object> m = reqs.get(0);
+        assertThat(m.get("operationType")).isEqualTo("TURNING");
+        assertThat(m.get("operationId")).isEqualTo("op1");
+        assertThat(m.get("requiredAccuracy")).isEqualTo("IT7");
+        assertThat(m.get("maxDimensions")).isEqualTo("1000x500x400");
+        assertThat(m.get("material")).isEqualTo("ST45");
+        assertThat(m.get("requiredPowerKw")).isEqualTo(new BigDecimal("15.5"));
+        assertThat(m.get("requiredForceKn")).isEqualTo(new BigDecimal("100"));
+        assertThat(m.get("requiredCnc")).isEqualTo(true);
+        assertThat(m.get("severity")).isEqualTo("CRITICAL");
     }
 
     @Test
