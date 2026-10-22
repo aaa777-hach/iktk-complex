@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
@@ -96,7 +95,7 @@ public class RecommendationCommandConsumer {
         publishResults("RECOMMENDATIONS_READY", projectId, response);
     }
 
-    private void handleOutsourcingSelected(JsonNode root, String projectId) {
+    private void handleOutsourcingSelected(JsonNode root, String projectId) throws Exception {
         JsonNode payload = root.path("payload");
         String optionId = text(payload, "optionId");
         String comment = text(payload, "comment");
@@ -109,19 +108,17 @@ public class RecommendationCommandConsumer {
         event.put("contractor", dto.getContractor());
         event.put("cost", dto.getCost());
         event.put("status", dto.getStatus());
-        rabbitTemplate.convertAndSend(resultsExchange, resultsRoutingPrefix + ".OUTSOURCING_SELECTED", event,
-                m -> { m.getMessageProperties().setContentType(MessageProperties.CONTENT_TYPE_JSON); return m; });
+        rabbitTemplate.convertAndSend(resultsExchange, resultsRoutingPrefix + ".OUTSOURCING_SELECTED", objectMapper.writeValueAsString(event));
     }
 
-    private void publishResults(String eventType, String projectId, GapAnalysisResponse response) {
+    private void publishResults(String eventType, String projectId, GapAnalysisResponse response) throws Exception {
         Map<String, Object> event = baseEvent(eventType, projectId);
         event.put("analysisId", response.getId());
         event.put("status", response.getStatus());
         event.put("gapsCount", response.getGapsCount());
         event.put("recommendationsCount", response.getRecommendationsCount());
         event.put("strategy", response.getStrategy());
-        rabbitTemplate.convertAndSend(resultsExchange, resultsRoutingPrefix + "." + eventType, event,
-                m -> { m.getMessageProperties().setContentType(MessageProperties.CONTENT_TYPE_JSON); return m; });
+        rabbitTemplate.convertAndSend(resultsExchange, resultsRoutingPrefix + "." + eventType, objectMapper.writeValueAsString(event));
         log.info("Published {} for project={} analysis={}", eventType, projectId, response.getId());
     }
 

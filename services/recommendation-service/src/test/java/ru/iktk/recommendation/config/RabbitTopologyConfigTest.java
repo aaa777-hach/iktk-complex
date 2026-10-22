@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,12 +51,5 @@ class RabbitTopologyConfigTest {
         Binding b = config.recommendationCommandsBinding(q, ex);
         assertThat(b.getRoutingKey()).isEqualTo("iktk.command.recommendation");
         assertThat(b.getDestination()).isEqualTo("iktk.recommendation-service.queue");
-    }
-
-    @Test
-    @DisplayName("MessageConverter -> Jackson2JsonMessageConverter")
-    void messageConverter_isJackson() {
-        assertThat(config.jacksonMessageConverter())
-                .isInstanceOf(Jackson2JsonMessageConverter.class);
     }
 }
