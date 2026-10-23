@@ -1101,6 +1101,7 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 | 3b | `"requiredCnc":"true"` (строка) → Jackson; нужен кастомный десериализатор | 20 мин (если оркестратор шлёт строку) |
 | 4b | Повторная публикация `RECOMMENDATIONS_READY` при идемпотентном повторе | by design, оставить |
 | Javadoc | Кракозябры в комментариях `EquipmentRecommendation`, `EquipmentGapAnalysis`, `EquipmentRequirement` | 30 мин, косметика |
+| jacoco-eq | `equipment-service`: покрытие 60/40 при порогах 75/80 (lines/branches). Нужны тесты на `CapabilityMatchingService` (170 стр.) и/или исключение контроллеров/репозиториев из check | 2–3 ч |
 
 ### Грабли (не повторять)
 
@@ -1116,10 +1117,11 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 10. **`generateForGap` фактически принимает `analysisId`**, не `gapId` (внутри `gapRepository.findById(gapId)` — ищет `EquipmentGapAnalysis` по id).
 11. **`git log` показывает кракозябры в кириллице** — это CP1251-декодирование UTF-8 stdout в PowerShell 5.1, а не порча коммита. Лечится `[Console]::OutputEncoding = [Text.Encoding]::UTF8` перед вызовом git. Не путать с реальной порчей файлов (грабли №3, №5).
 12. **Массовое преобразование CP1251→UTF8 по всему файлу может испортить уже корректные строковые литералы с кириллицей.** Если в файле смешанное состояние (Javadoc порчен, а литералы — нет), преобразование ломает литералы (`"Отклонено: "` → `"���������: "`). Решение: проверять diff на не-комментарные `+`-строки перед коммитом, либо применять преобразование точечно к блокам комментариев.
+13. **`mvn verify` в `equipment-service` падает на `jacoco:check`*
+* …
 
 ### Правило на будущее
 В конце каждой сессии: `mvn verify` → `EXIT: 0` → коммит кода → дописать в `PROGRESS.md` раздел `## 📌 СЕССИЯ <дата>` (5–10 строк) → `git commit -m "docs: PROGRESS.md — сессия <дата>"`.
-
 
 ### Обновление 2026-10-23 (вечер)
 - 3b закрыт: `LenientBooleanDeserializer` (`05cf8ed`) — принимает `true`/`"true"`/`1`/`"yes"`/`"on"`. 16 тестов, 139/139.
@@ -1133,3 +1135,10 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - `EquipmentRequirement` уже был чистым — не трогали. В equipment-service Javadoc отсутствует — вне scope.
 - `mvn -pl services/recommendation-service -am verify` → BUILD SUCCESS, 143/143, jacoco passed.
 - **Техдолг «Javadoc в 3 моделях» закрыт.**
+
+### Обновление 2026-10-23 (Javadoc equipment-service)
+
+- Добавлен Javadoc в 6 моделей `equipment-service`: `EquipmentAssignment`, `EquipmentRequirement`, `EquipmentStatus`, `EquipmentTooling`, `EquipmentToolingId`, `EquipmentGapAnalysis`.
+- Стиль — по эталону `Equipment.java` (назначение, `<ul>` атрибутов, `<p>Таблица: … миграция VN`). Версии миграций: assignments — V4, остальные — V3.
+- `mvn -pl services/equipment-service -am verify` → **BUILD FAILURE по jacoco** (см. техдолг ниже). 84 теста — все зелёные, Javadoc к покрытию не относится.
+- Проверено на HEAD (`git stash` → verify → `stash pop`): те же `Rule violated` — проблема предсуществующая.
