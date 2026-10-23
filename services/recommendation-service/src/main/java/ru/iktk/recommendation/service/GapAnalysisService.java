@@ -83,6 +83,7 @@ public class GapAnalysisService {
     private final EquipmentClient equipmentClient;
     private final EquipmentRecommendationService recommendationService;
     private final RecommendationProperties properties;
+    private final GapAnalysisPersistenceService persistenceService;
 
     public GapAnalysisService(EquipmentGapAnalysisRepository gapRepository,
                               EquipmentRequirementRepository requirementRepository,
@@ -90,7 +91,8 @@ public class GapAnalysisService {
                               RecommendationMapper mapper,
                               EquipmentClient equipmentClient,
                               EquipmentRecommendationService recommendationService,
-                              RecommendationProperties properties) {
+                              RecommendationProperties properties,
+                              GapAnalysisPersistenceService persistenceService) {
         this.gapRepository = gapRepository;
         this.requirementRepository = requirementRepository;
         this.recommendationRepository = recommendationRepository;
@@ -98,6 +100,7 @@ public class GapAnalysisService {
         this.equipmentClient = equipmentClient;
         this.recommendationService = recommendationService;
         this.properties = properties;
+        this.persistenceService = persistenceService;
     }
 
     // ==================================================================
@@ -118,7 +121,6 @@ public class GapAnalysisService {
      *       (если включено).</li>
      * </ol>
      */
-    @Transactional(noRollbackFor = RecommendationException.class)
     public GapAnalysisResponse run(GapAnalysisRequest request) {
         validate(request);
 
@@ -136,7 +138,7 @@ public class GapAnalysisService {
             return mapper.toGapResponse(reusable.get());
         }
 
-String analysisId = UUID.randomUUID().toString();
+        String analysisId = UUID.randomUUID().toString();
         Instant startedAt = Instant.now();
 
         EquipmentGapAnalysis analysis = EquipmentGapAnalysis.builder()
@@ -147,7 +149,7 @@ String analysisId = UUID.randomUUID().toString();
                 .startedAt(startedAt)
                 .build();
 
-        gapRepository.save(analysis);
+        persistenceService.save(analysis);
 
         try {
             // 1. Загрузка требований
@@ -159,7 +161,7 @@ String analysisId = UUID.randomUUID().toString();
                 analysis.setGapsCount(0);
                 analysis.setRecommendationsCount(0);
                 analysis.setCompletedAt(Instant.now());
-                gapRepository.save(analysis);
+                persistenceService.save(analysis);
 
                 log.info("run: нет требований для анализа, projectId={}", projectId);
                 return mapper.toGapResponse(analysis);
@@ -183,14 +185,14 @@ String analysisId = UUID.randomUUID().toString();
             if (gaps.isEmpty()) {
                 analysis.setStatus(STATUS_COMPLETED);
                 analysis.setRecommendationsCount(0);
-                gapRepository.save(analysis);
+                persistenceService.save(analysis);
 
                 log.info("run: дефицита не обнаружено, projectId={}", projectId);
                 return mapper.toGapResponse(analysis);
             }
 
             analysis.setStatus(STATUS_COMPLETED);
-            gapRepository.save(analysis);
+            persistenceService.save(analysis);
 
              // 4. Автоматическое формирование рекомендаций
             List<EquipmentRecommendation> recommendations = new ArrayList<>();
@@ -204,7 +206,7 @@ String analysisId = UUID.randomUUID().toString();
             }
 
             analysis.setRecommendationsCount(recommendations.size());
-            gapRepository.save(analysis);
+            persistenceService.save(analysis);
 
                         log.info("run done: projectId={}, analysisId={}, gaps={}, recommendations={}",
                     projectId, analysisId, gaps.size(), recommendations.size());
@@ -215,13 +217,13 @@ String analysisId = UUID.randomUUID().toString();
             analysis.setStatus(STATUS_FAILED);
             analysis.setError(e.getMessage());
             analysis.setCompletedAt(Instant.now());
-            gapRepository.save(analysis);
+            persistenceService.save(analysis);
             throw e;
         } catch (Exception e) {
             analysis.setStatus(STATUS_FAILED);
             analysis.setError(e.getMessage());
             analysis.setCompletedAt(Instant.now());
-            gapRepository.save(analysis);
+            persistenceService.save(analysis);
             log.error("run failed: projectId={}", projectId, e);
             throw RecommendationException.gapAnalysisFailed(projectId, e);
         }

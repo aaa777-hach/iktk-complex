@@ -45,10 +45,11 @@ class GapAnalysisServiceIdempotencyTest {
     @Mock private RecommendationProperties properties;
 
     @InjectMocks private GapAnalysisService service;
+    @Mock private GapAnalysisPersistenceService persistenceService;
 
     @BeforeEach
     void setUp() {
-        when(gapRepository.save(any(EquipmentGapAnalysis.class)))
+        when(persistenceService.save(any(EquipmentGapAnalysis.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
         when(mapper.toGapResponse(any())).thenAnswer(inv -> {
             EquipmentGapAnalysis a = inv.getArgument(0);
@@ -81,7 +82,7 @@ class GapAnalysisServiceIdempotencyTest {
         GapAnalysisResponse resp = service.run(request());
 
         assertThat(resp.getId()).isEqualTo("a-existing");
-        verify(gapRepository, never()).save(any());
+        verify(persistenceService, never()).save(any());
     }
 
     @Test
@@ -112,7 +113,7 @@ class GapAnalysisServiceIdempotencyTest {
 
         service.run(request());
 
-        verify(gapRepository, atLeast(1)).save(any(EquipmentGapAnalysis.class));
+        verify(persistenceService, atLeast(1)).save(any(EquipmentGapAnalysis.class));
     }
 
     @Test
@@ -127,6 +128,6 @@ class GapAnalysisServiceIdempotencyTest {
 
         service.run(request());
 
-        verify(gapRepository, atLeast(1)).save(any(EquipmentGapAnalysis.class));
+        verify(persistenceService, atLeast(1)).save(any(EquipmentGapAnalysis.class));
     }
 }

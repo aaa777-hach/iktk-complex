@@ -46,10 +46,11 @@ class GapAnalysisServiceMatchTest {
     @Mock private RecommendationProperties properties;
 
     @InjectMocks private GapAnalysisService service;
+    @Mock private GapAnalysisPersistenceService persistenceService;
 
     @BeforeEach
     void setUp() {
-        when(gapRepository.save(any(EquipmentGapAnalysis.class)))
+        when(persistenceService.save(any(EquipmentGapAnalysis.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
         when(mapper.toGapResponse(any())).thenReturn(
                 GapAnalysisResponse.builder().id("a1").build());
@@ -76,7 +77,7 @@ class GapAnalysisServiceMatchTest {
 
         ArgumentCaptor<EquipmentGapAnalysis> captor =
                 ArgumentCaptor.forClass(EquipmentGapAnalysis.class);
-        verify(gapRepository, atLeast(1)).save(captor.capture());
+        verify(persistenceService, atLeast(1)).save(captor.capture());
         EquipmentGapAnalysis last = captor.getAllValues()
                 .get(captor.getAllValues().size() - 1);
         assertThat(last.getStatus()).isEqualTo("FAILED");
@@ -93,7 +94,7 @@ class GapAnalysisServiceMatchTest {
 
         ArgumentCaptor<EquipmentGapAnalysis> captor =
                 ArgumentCaptor.forClass(EquipmentGapAnalysis.class);
-        verify(gapRepository, atLeast(1)).save(captor.capture());
+        verify(persistenceService, atLeast(1)).save(captor.capture());
         EquipmentGapAnalysis last = captor.getAllValues()
                 .get(captor.getAllValues().size() - 1);
         assertThat(last.getGapsCount()).isEqualTo(1);
@@ -110,7 +111,7 @@ class GapAnalysisServiceMatchTest {
 
         ArgumentCaptor<EquipmentGapAnalysis> captor =
                 ArgumentCaptor.forClass(EquipmentGapAnalysis.class);
-        verify(gapRepository, atLeast(1)).save(captor.capture());
+        verify(persistenceService, atLeast(1)).save(captor.capture());
         EquipmentGapAnalysis last = captor.getAllValues()
                 .get(captor.getAllValues().size() - 1);
         assertThat(last.getGapsCount()).isZero();
