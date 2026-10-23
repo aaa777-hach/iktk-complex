@@ -21,6 +21,7 @@
         <jjwt.version>0.11.5</jjwt.version>
         <mapstruct.version>1.6.2</mapstruct.version>
         <lombok.version>1.18.34</lombok.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
     <modules>
     <module>core</module>
