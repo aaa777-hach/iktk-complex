@@ -1123,3 +1123,6 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - 3b закрыт: `LenientBooleanDeserializer` (`05cf8ed`) — принимает `true`/`"true"`/`1`/`"yes"`/`"on"`. 16 тестов, 139/139.
 - Smoke пройден: TURNING (gaps=1,recs=2), DIE_CASTING (0/0), идемпотентность (1 строка), строка `"true"` → матч (0/0).
 - Осталось: Javadoc в 3 моделях (косметика, 1.5 ч) — вынести на отдельную сессию.
+git add PROGRESS.md
+git commit -m "docs: PROGRESS.md — вариант B закрыт: полный цикл через orchestrator до RECOMMENDATION_REVIEW"
+git log --oneline -3
