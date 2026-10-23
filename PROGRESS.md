@@ -1114,6 +1114,8 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 8. **`@EntityScan = "ru.iktk.core.domain"` тянет `projects`** (чужая таблица). Сужать до `model`.
 9. **`VersioningService` из `shared` несовместим с VARCHAR-ID** (`UUID.fromString("r1")`). Либо UUID везде, либо свой лёгкий сервис.
 10. **`generateForGap` фактически принимает `analysisId`**, не `gapId` (внутри `gapRepository.findById(gapId)` — ищет `EquipmentGapAnalysis` по id).
+11. **`git log` показывает кракозябры в кириллице** — это CP1251-декодирование UTF-8 stdout в PowerShell 5.1, а не порча коммита. Лечится `[Console]::OutputEncoding = [Text.Encoding]::UTF8` перед вызовом git. Не путать с реальной порчей файлов (грабли №3, №5).
+12. **Массовое преобразование CP1251→UTF8 по всему файлу может испортить уже корректные строковые литералы с кириллицей.** Если в файле смешанное состояние (Javadoc порчен, а литералы — нет), преобразование ломает литералы (`"Отклонено: "` → `"���������: "`). Решение: проверять diff на не-комментарные `+`-строки перед коммитом, либо применять преобразование точечно к блокам комментариев.
 
 ### Правило на будущее
 В конце каждой сессии: `mvn verify` → `EXIT: 0` → коммит кода → дописать в `PROGRESS.md` раздел `## 📌 СЕССИЯ <дата>` (5–10 строк) → `git commit -m "docs: PROGRESS.md — сессия <дата>"`.
@@ -1123,3 +1125,11 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - 3b закрыт: `LenientBooleanDeserializer` (`05cf8ed`) — принимает `true`/`"true"`/`1`/`"yes"`/`"on"`. 16 тестов, 139/139.
 - Smoke пройден: TURNING (gaps=1,recs=2), DIE_CASTING (0/0), идемпотентность (1 строка), строка `"true"` → матч (0/0).
 - Осталось: Javadoc в 3 моделях (косметика, 1.5 ч) — вынести на отдельную сессию.
+
+### Обновление 2026-10-23 (Javadoc закрыт)
+
+- Восстановлен Javadoc в `EquipmentGapAnalysis` и `EquipmentRecommendation` (recommendation-service).
+- Метод: CP1251→UTF-8 восстановление по всему файлу + ручная правка литерала `"Отклонено: "` (был корректным до преобразования — грабли №12).
+- `EquipmentRequirement` уже был чистым — не трогали. В equipment-service Javadoc отсутствует — вне scope.
+- `mvn -pl services/recommendation-service -am verify` → BUILD SUCCESS, 143/143, jacoco passed.
+- **Техдолг «Javadoc в 3 моделях» закрыт.**
