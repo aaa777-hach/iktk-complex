@@ -16,6 +16,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Доменная модель gap-анализа ИКТК.
+ *
+ * <p>Описывает результат сопоставления требований к оборудованию
+ * (из спроектированных ТП) с фактическим парком предприятия:
+ * <ul>
+ *   <li>идентификация: {@code projectId};</li>
+ *   <li>стратегия сопоставления: {@code strategy} — STRICT, FLEXIBLE,
+ *       HYBRID;</li>
+ *   <li>статус: {@code status} — RUNNING, COMPLETED, FAILED;</li>
+ *   <li>инициатор: {@code requestedBy};</li>
+ *   <li>результаты: {@code gapsCount}, {@code recommendationsCount},
+ *       {@code gaps} (JSONB), {@code summary} (JSONB);</li>
+ *   <li>тайминги: {@code startedAt}, {@code completedAt}.</li>
+ * </ul>
+ *
+ * <p><b>Жизненный цикл:</b>
+ * <ol>
+ *   <li>{@code RUNNING} — анализ запущен;</li>
+ *   <li>{@code COMPLETED} — анализ завершён, дефициты зафиксированы;</li>
+ *   <li>{@code FAILED} — ошибка, {@code error} заполнен.</li>
+ * </ol>
+ *
+ * <p>Таблица: {@code equipment_gap_analysis} (PostgreSQL, миграция V3).
+ */
 @Entity
 @Table(
         name = "equipment_gap_analysis",

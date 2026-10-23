@@ -11,6 +11,23 @@ import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
 
+/**
+ * Доменная модель совместимости единицы оборудования с оснасткой.
+ *
+ * <p>Описывает связь «оборудование — оснастка» через составной ключ
+ * {@link EquipmentToolingId}:
+ * <ul>
+ *   <li>идентификация: {@code id} ({@code equipmentId}, {@code toolingId});</li>
+ *   <li>степень совместимости: {@code compatibility} — FULL, PARTIAL,
+ *       NONE;</li>
+ *   <li>примечания: {@code notes}.</li>
+ * </ul>
+ *
+ * <p><b>Использование:</b> проверка применимости оснастки при выборе ТП
+ * и matching.
+ *
+ * <p>Таблица: {@code equipment_tooling} (PostgreSQL, миграция V3).
+ */
 @Entity
 @Table(
         name = "equipment_tooling",

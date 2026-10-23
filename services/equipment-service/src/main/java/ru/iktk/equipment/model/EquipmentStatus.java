@@ -14,6 +14,25 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.Objects;
 
+/**
+ * Доменная модель текущего состояния единицы оборудования ИКТК.
+ *
+ * <p>Описывает оперативный статус станка/агрегата на момент времени:
+ * <ul>
+ *   <li>привязка: {@code equipmentId} (уникальна — один статус на единицу);</li>
+ *   <li>состояние: {@code state} — AVAILABLE, BUSY, MAINTENANCE,
+ *       DECOMMISSIONED;</li>
+ *   <li>загрузка: {@code loadPercent} (0…100);</li>
+ *   <li>расписание: {@code schedule};</li>
+ *   <li>эксплуатация: {@code lastUsedAt}, {@code nextMaintenanceAt};</li>
+ *   <li>примечания: {@code notes}.</li>
+ * </ul>
+ *
+ * <p><b>Использование:</b> планирование загрузки, проверка доступности
+ * при назначении на проект, напоминания о ТО.
+ *
+ * <p>Таблица: {@code equipment_status} (PostgreSQL, миграция V3).
+ */
 @Entity
 @Table(
         name = "equipment_status",

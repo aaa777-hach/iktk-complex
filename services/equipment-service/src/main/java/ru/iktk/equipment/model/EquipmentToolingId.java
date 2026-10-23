@@ -5,7 +5,13 @@ import jakarta.persistence.Embeddable;
 
 import java.io.Serializable;
 import java.util.Objects;
-
+/**
+ * Составной первичный ключ связи «оборудование — оснастка».
+ *
+ * <p>Пара ({@code equipmentId}, {@code toolingId}) однозначно идентифицирует
+ * запись в таблице {@code equipment_tooling}. Используется как
+ * {@link jakarta.persistence.EmbeddedId} в {@link EquipmentTooling}.
+ */
 @Embeddable
 public class EquipmentToolingId implements Serializable {
 

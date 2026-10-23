@@ -8,7 +8,28 @@ import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.util.Objects;
-
+/**
+ * Доменная модель закрепления единицы оборудования за проектом ИКТК.
+ *
+ * <p>Описывает факт назначения оборудования на проект и снятия с него:
+ * <ul>
+ *   <li>идентификация: {@code projectId}, {@code equipmentId};</li>
+ *   <li>кто назначил: {@code assignedBy};</li>
+ *   <li>интервал: {@code assignedAt} — {@code unassignedAt};</li>
+ *   <li>признак активности: {@code active} (true — закрепление действует).</li>
+ * </ul>
+ *
+ * <p><b>Жизненный цикл:</b>
+ * <ol>
+ *   <li>создание — {@code active = true}, {@code assignedAt = now()};</li>
+ *   <li>{@link #unassign()} — {@code active = false}, {@code unassignedAt = now()}.</li>
+ * </ol>
+ *
+ * <p><b>Использование:</b> учёт занятости парка при планировании
+ * производства и gap-анализе.
+ *
+ * <p>Таблица: {@code equipment_assignments} (PostgreSQL, миграция V4).
+ */
 @Entity
 @Table(
         name = "equipment_assignments",
@@ -63,6 +84,10 @@ public class EquipmentAssignment {
     public Instant getUnassignedAt() { return unassignedAt; }
     public boolean isActive() { return active; }
 
+    /**
+     * Снять закрепление: деактивирует запись и проставляет
+     * {@code unassignedAt = now()}.
+     */
     public void unassign() {
         this.active = false;
         this.unassignedAt = Instant.now();

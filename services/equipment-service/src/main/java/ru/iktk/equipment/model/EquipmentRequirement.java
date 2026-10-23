@@ -18,6 +18,30 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Доменная модель требования к оборудованию ИКТК.
+ *
+ * <p>Описывает требование, вытекающее из операции спроектированного ТП
+ * (литьё, штамповка, механообработка, сборка), и параметры, которым
+ * должна удовлетворять единица парка:
+ * <ul>
+ *   <li>привязка: {@code projectId}, {@code processId}, {@code stageId},
+ *       {@code operationId}, {@code analysisId};</li>
+ *   <li>тип операции: {@code operationType}, {@code requiredEquipmentType};</li>
+ *   <li>точностные и габаритные ограничения: {@code requiredAccuracy},
+ *       {@code minDimensions}, {@code maxDimensions};</li>
+ *   <li>технологические параметры: {@code requiredPowerKw},
+ *       {@code requiredForceKn}, {@code requiredCnc}, {@code requiredAxes},
+ *       {@code requiredTemperatureC};</li>
+ *   <li>количество: {@code quantity};</li>
+ *   <li>приоритет: {@code priority} (0…10).</li>
+ * </ul>
+ *
+ * <p><b>Использование:</b> сопоставление с парком (matching) и выявление
+ * дефицита (gap-анализ).
+ *
+ * <p>Таблица: {@code equipment_requirements} (PostgreSQL, миграция V3).
+ */
 @Entity
 @Table(
         name = "equipment_requirements",
