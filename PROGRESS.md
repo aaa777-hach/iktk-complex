@@ -1117,3 +1117,9 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 
 ### Правило на будущее
 В конце каждой сессии: `mvn verify` → `EXIT: 0` → коммит кода → дописать в `PROGRESS.md` раздел `## 📌 СЕССИЯ <дата>` (5–10 строк) → `git commit -m "docs: PROGRESS.md — сессия <дата>"`.
+
+
+### Обновление 2026-10-23 (вечер)
+- 3b закрыт: `LenientBooleanDeserializer` (`05cf8ed`) — принимает `true`/`"true"`/`1`/`"yes"`/`"on"`. 16 тестов, 139/139.
+- Smoke пройден: TURNING (gaps=1,recs=2), DIE_CASTING (0/0), идемпотентность (1 строка), строка `"true"` → матч (0/0).
+- Осталось: Javadoc в 3 моделях (косметика, 1.5 ч) — вынести на отдельную сессию.
