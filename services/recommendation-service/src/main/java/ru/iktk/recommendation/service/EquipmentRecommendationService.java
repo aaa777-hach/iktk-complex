@@ -110,7 +110,7 @@ public class EquipmentRecommendationService {
                 .orElseThrow(() -> RecommendationException.notFound(
                         "Дефицит не найден: " + gapId));
 
-        log.info("generateForGap: gapId={}, projectId={}, operationType={}",
+        log.info("generateForGap: analysisId={}, projectId={}, operationType={}",
                 gapId, gap.getProjectId(), gap.getOperationType());
 
         List<EquipmentRecommendation> result = new ArrayList<>();
@@ -147,7 +147,7 @@ public class EquipmentRecommendationService {
         // 7. Сохранение
         List<EquipmentRecommendation> saved = recommendationRepository.saveAll(result);
 
-        log.info("generateForGap done: gapId={}, recommendations={}",
+        log.info("generateForGap done: analysisId={}, recommendations={}",
                 gapId, saved.size());
 
         return saved;
