@@ -1048,3 +1048,72 @@ Get-NetTCPConnection -LocalPort 8080,8090 -State Listen
 1. **`equipment-service` → полный реестр** (JPA `EquipmentStatus`, `EquipmentTooling`, `EquipmentRequirement`, `EquipmentGapAnalysis` — V3+).
 2. **MinIO** — хранилище CAD-файлов (STL/STEP) вместо JSON-полей в БД — отдельная фича.
 3. **Flyway для остальных БД** — при добавлении новых миграций (все сервисы уже под Flyway).
+
+---
+
+## recommendation-service — состояние на 2026-10-23
+
+**Коммит:** `08f4c28`. **Тесты:** 123/123. **Покрытие:** ~80% LINE / ~59% BRANCH (порог 70/50).
+**Закрытый техдолг:** №1 (`matchRequirement` не маскирует ошибки), №2 (`REQUIRES_NEW` для analysis), №3 (`requiredCnc`/`quantity`/`notes` терялись), №4 (идемпотентность `run()`), №5 (логи `analysisId`), №6 (баннер UTF-8).
+
+**Проверено живьём:**
+- `OUTSOURCING_SELECTED` → `status: PENDING → SELECTED`, событие в `iktk.result.OUTSOURCING_SELECTED`.
+- `EQUIPMENT_GAP_RESOLUTION` (`TURNING`, нет в capabilities) → `gaps=1`, 2 рекомендации (`ADJUST_PROCESS`, `OUTSOURCE`).
+- `EQUIPMENT_GAP_RESOLUTION` (`DIE_CASTING`, есть в capabilities) → `gaps=0`, 0 рекомендаций.
+- Идемпотентность: 2 команды с `projectId=p-idem-2` за 2 сек → **1 анализ** в БД (не 2).
+
+### Runbook
+
+| Сервис | Порт | БД | Контейнер |
+|---|---|---|---|
+| `recommendation-service` | 8098 | `iktk_recommendation` | `rec-pg` (PostgreSQL 5433) |
+| `equipment-service` | 8094 | `iktk_equipment` | `iktk-postgres` (PostgreSQL 5432) |
+
+**RabbitMQ:** контейнер `iktk-rabbitmq`, порт `5672` (management `15672`), vhost `/iktk`, user `iktk` / `iktk_dev_password`. Очередь команд `iktk.recommendation-service.queue`, exchange результатов `iktk.results`.
+
+**Запуск (4 окна):**
+```powershell
+# Окно 1 — EQ-SERVICE (8094)
+$Host.UI.RawUI.WindowTitle = "EQ-SERVICE (8094)"
+cd C:\Users\Antipovich\Desktop\Orchestr\iktk-complex
+mvn -pl services/equipment-service spring-boot:run 2>&1 | Tee-Object -FilePath run-eq.log
+
+# Окно 2 — REC-SERVICE (8098)
+$Host.UI.RawUI.WindowTitle = "REC-SERVICE (8098)"
+cd C:\Users\Antipovich\Desktop\Orchestr\iktk-complex
+mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FilePath run-rec.log
+
+# Окна 3–4 — публикация/psql/логи (здесь НЕ запускать spring-boot:run)
+
+```
+
+**Проверка:**
+```powershell
+"8094 EQ: " + (Test-NetConnection localhost -Port 8094 -InformationLevel Quiet)
+"8098 REC:" + (Test-NetConnection localhost -Port 8098 -InformationLevel Quiet)
+(Invoke-RestMethod http://localhost:8098/actuator/health).status   # UP
+```
+
+### Техдолг (открыт, низкий приоритет)
+
+| # | Что | Время |
+|---|---|---|
+| 3b | `"requiredCnc":"true"` (строка) → Jackson; нужен кастомный десериализатор | 20 мин (если оркестратор шлёт строку) |
+| 4b | Повторная публикация `RECOMMENDATIONS_READY` при идемпотентном повторе | by design, оставить |
+| Javadoc | Кракозябры в комментариях `EquipmentRecommendation`, `EquipmentGapAnalysis`, `EquipmentRequirement` | 30 мин, косметика |
+
+### Грабли (не повторять)
+
+1. **Порт `equipment-service` — 8094, не 8085.** `EquipmentClient` и `application.yml` должны указывать на 8094.
+2. **CRLF в .NET-regex:** в PowerShell `-replace` с якорем `$` не матчит конец строки в CRLF-файлах. Использовать `\r?\n` или `code`.
+3. **here-string в PowerShell 5.1 + кириллица:** Java/русский текст портится (CP1251 → UTF-8). Только `code` или `WriteAllText` с `UTF8Encoding $false`.
+4. **`[System.IO.File]` игнорирует `cd` PowerShell:** рабочая папка процесса — `C:\WINDOWS\system32`. Использовать `(Resolve-Path ...).Path`.
+5. **`Get-Content` в PowerShell 5.1 читает как CP1251** — UTF-8 файл показывает кракозябрами. Ложная тревога, проверять через `[System.IO.File]::ReadAllLines($path, [Text.Encoding]::UTF8)`.
+6. **Дубликат бина `RecommendationProperties`:** `@Component` + `@EnableConfigurationProperties` = два бина. Оставить только `@ConfigurationProperties`.
+7. **`scanBasePackages = "ru.iktk.shared"` тянет `StorageClient` (MinIO).** Для изолированного сервиса — сужать до своего пакета.
+8. **`@EntityScan = "ru.iktk.core.domain"` тянет `projects`** (чужая таблица). Сужать до `model`.
+9. **`VersioningService` из `shared` несовместим с VARCHAR-ID** (`UUID.fromString("r1")`). Либо UUID везде, либо свой лёгкий сервис.
+10. **`generateForGap` фактически принимает `analysisId`**, не `gapId` (внутри `gapRepository.findById(gapId)` — ищет `EquipmentGapAnalysis` по id).
+
+### Правило на будущее
+В конце каждой сессии: `mvn verify` → `EXIT: 0` → коммит кода → дописать в `PROGRESS.md` раздел `## 📌 СЕССИЯ <дата>` (5–10 строк) → `git commit -m "docs: PROGRESS.md — сессия <дата>"`.
