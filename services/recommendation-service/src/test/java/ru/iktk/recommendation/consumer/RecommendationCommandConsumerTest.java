@@ -70,7 +70,7 @@ class RecommendationCommandConsumerTest {
 
         verify(gapAnalysisService).run(any());
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(rabbitTemplate).convertAndSend(eq("iktk.results"), eq("iktk.result.RECOMMENDATIONS_READY"), captor.capture());
+        verify(rabbitTemplate).convertAndSend(eq("iktk.results"), eq("iktk.result.RECOMMENDATIONS_READY"), captor.capture(), any(org.springframework.amqp.core.MessagePostProcessor.class));
         assertThat(captor.getValue()).isInstanceOf(String.class);
     }
 
@@ -89,7 +89,7 @@ class RecommendationCommandConsumerTest {
         consumer.onCommand(body, "iktk.command.recommendation");
 
         verify(outsourcingService).select(eq("o1"), eq("ok"));
-        verify(rabbitTemplate).convertAndSend(eq("iktk.results"), eq("iktk.result.OUTSOURCING_SELECTED"), any(Object.class));
+        verify(rabbitTemplate).convertAndSend(eq("iktk.results"), eq("iktk.result.OUTSOURCING_SELECTED"), any(Object.class), any(org.springframework.amqp.core.MessagePostProcessor.class));
     }
 
     @Test
@@ -120,6 +120,6 @@ class RecommendationCommandConsumerTest {
 
         consumer.onCommand(body, "iktk.command.recommendation");
 
-        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class));
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(Object.class), any(org.springframework.amqp.core.MessagePostProcessor.class));
     }
 }

@@ -5,8 +5,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.RabbitMQContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Базовый класс интеграционных тестов recommendation-service.
@@ -21,20 +19,20 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * Порт — случайный ({@code getMappedPort}), с локальными 5432/5433/5672 не конфликтует.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@Testcontainers
 public abstract class AbstractIntegrationTest {
-
-    @Container
     static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16")
                     .withDatabaseName("iktk_recommendation")
                     .withUsername("postgres")
                     .withPassword("postgres");
-
-    @Container
     static final RabbitMQContainer RABBIT =
             new RabbitMQContainer("rabbitmq:3.13-management")
                 .withStartupTimeout(java.time.Duration.ofMinutes(3));
+                
+    static {
+        POSTGRES.start();
+        RABBIT.start();
+    }
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
