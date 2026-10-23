@@ -19,36 +19,36 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Р”РѕРјРµРЅРЅР°СЏ РјРѕРґРµР»СЊ gap-Р°РЅР°Р»РёР·Р° РРљРўРљ.
+ * Доменная модель gap-анализа ИКТК.
  *
- * <p>РћРїРёСЃС‹РІР°РµС‚ СЂРµР·СѓР»СЊС‚Р°С‚ СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРёСЏ С‚СЂРµР±РѕРІР°РЅРёР№ Рє РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЋ
- * (РёР· СЃРїСЂРѕРµРєС‚РёСЂРѕРІР°РЅРЅС‹С… РўРџ) СЃ С„Р°РєС‚РёС‡РµСЃРєРёРј РїР°СЂРєРѕРј РїСЂРµРґРїСЂРёСЏС‚РёСЏ.
- * РҐСЂР°РЅРёС‚ СЃРїРёСЃРѕРє РІС‹СЏРІР»РµРЅРЅС‹С… РґРµС„РёС†РёС‚РѕРІ ({@link Gap}) Рё Р°РіСЂРµРіРёСЂРѕРІР°РЅРЅС‹Рµ
- * РїРѕРєР°Р·Р°С‚РµР»Рё.
+ * <p>Описывает результат сопоставления требований к оборудованию
+ * (из спроектированных ТП) с фактическим парком предприятия.
+ * Хранит список выявленных дефицитов ({@link Gap}) и агрегированные
+ * показатели.
  *
- * <p><b>РљР»СЋС‡РµРІС‹Рµ Р°С‚СЂРёР±СѓС‚С‹:</b>
+ * <p><b>Ключевые атрибуты:</b>
  * <ul>
- *   <li>{@code projectId} вЂ” РїСЂРѕРµРєС‚;</li>
- *   <li>{@code strategy} вЂ” СЃС‚СЂР°С‚РµРіРёСЏ СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРёСЏ
+ *   <li>{@code projectId} — проект;</li>
+ *   <li>{@code strategy} — стратегия сопоставления
  *       (STRICT, FLEXIBLE, HYBRID);</li>
- *   <li>{@code status} вЂ” RUNNING, COMPLETED, FAILED;</li>
- *   <li>{@code gapsCount} вЂ” С‡РёСЃР»Рѕ РІС‹СЏРІР»РµРЅРЅС‹С… РґРµС„РёС†РёС‚РѕРІ;</li>
- *   <li>{@code recommendationsCount} вЂ” С‡РёСЃР»Рѕ СЃС„РѕСЂРјРёСЂРѕРІР°РЅРЅС‹С…
- *       СЂРµРєРѕРјРµРЅРґР°С†РёР№;</li>
- *   <li>{@code gaps} вЂ” СЃРїРёСЃРѕРє РґРµС„РёС†РёС‚РѕРІ ({@link Gap}, JSONB);</li>
- *   <li>{@code startedAt}, {@code completedAt} вЂ” РІСЂРµРјРµРЅРЅС‹Рµ РјРµС‚РєРё;</li>
- *   <li>{@code error} вЂ” СЃРѕРѕР±С‰РµРЅРёРµ РѕР± РѕС€РёР±РєРµ (РїСЂРё FAILED).</li>
+ *   <li>{@code status} — RUNNING, COMPLETED, FAILED;</li>
+ *   <li>{@code gapsCount} — число выявленных дефицитов;</li>
+ *   <li>{@code recommendationsCount} — число сформированных
+ *       рекомендаций;</li>
+ *   <li>{@code gaps} — список дефицитов ({@link Gap}, JSONB);</li>
+ *   <li>{@code startedAt}, {@code completedAt} — временные метки;</li>
+ *   <li>{@code error} — сообщение об ошибке (при FAILED).</li>
  * </ul>
  *
- * <p><b>Р–РёР·РЅРµРЅРЅС‹Р№ С†РёРєР»:</b>
+ * <p><b>Жизненный цикл:</b>
  * <ol>
- *   <li>{@code RUNNING} вЂ” Р°РЅР°Р»РёР· Р·Р°РїСѓС‰РµРЅ (СЃРѕР·РґР°РЅРёРµ Р·Р°РїРёСЃРё);</li>
- *   <li>{@code COMPLETED} вЂ” Р°РЅР°Р»РёР· Р·Р°РІРµСЂС€С‘РЅ, РґРµС„РёС†РёС‚С‹ Рё СЂРµРєРѕРјРµРЅРґР°С†РёРё
- *       Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅС‹;</li>
- *   <li>{@code FAILED} вЂ” РѕС€РёР±РєР°, {@code error} Р·Р°РїРѕР»РЅРµРЅ.</li>
+ *   <li>{@code RUNNING} — анализ запущен (создание записи);</li>
+ *   <li>{@code COMPLETED} — анализ завершён, дефициты и рекомендации
+ *       зафиксированы;</li>
+ *   <li>{@code FAILED} — ошибка, {@code error} заполнен.</li>
  * </ol>
  *
- * <p>РўР°Р±Р»РёС†Р°: {@code equipment_gap_analysis} (PostgreSQL, РјРёРіСЂР°С†РёСЏ V6).
+ * <p>Таблица: {@code equipment_gap_analysis} (PostgreSQL, миграция V6).
  */
 @Entity
 @Table(
@@ -64,85 +64,85 @@ import java.util.Objects;
 public class EquipmentGapAnalysis {
 
     // ------------------------------------------------------------------
-    // РРґРµРЅС‚РёС„РёРєР°С†РёСЏ
+    // Идентификация
     // ------------------------------------------------------------------
 
-    /** РЈРЅРёРєР°Р»СЊРЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ (UUID). */
+    /** Уникальный идентификатор (UUID). */
     @Id
     @Column(name = "id", nullable = false, length = 64, updatable = false)
     private String id;
 
-    /** РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕРµРєС‚Р°. */
+    /** Идентификатор проекта. */
     @Column(name = "project_id", nullable = false, length = 64)
     private String projectId;
 
     // ------------------------------------------------------------------
-    // РџР°СЂР°РјРµС‚СЂС‹ Р°РЅР°Р»РёР·Р°
+    // Параметры анализа
     // ------------------------------------------------------------------
 
-    /** РЎС‚СЂР°С‚РµРіРёСЏ СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРёСЏ: STRICT, FLEXIBLE, HYBRID. */
+    /** Стратегия сопоставления: STRICT, FLEXIBLE, HYBRID. */
     @NotBlank
     @Size(max = 32)
     @Column(name = "strategy", nullable = false, length = 32)
     private String strategy;
 
-    /** РЎС‚Р°С‚СѓСЃ: RUNNING, COMPLETED, FAILED. */
+    /** Статус: RUNNING, COMPLETED, FAILED. */
     @Column(name = "status", nullable = false, length = 32)
     private String status;
 
-    /** РљС‚Рѕ Р·Р°РїСѓСЃС‚РёР» Р°РЅР°Р»РёР·. */
+    /** Кто запустил анализ. */
     @Size(max = 128)
     @Column(name = "requested_by", length = 128)
     private String requestedBy;
 
     // ------------------------------------------------------------------
-    // Р РµР·СѓР»СЊС‚Р°С‚С‹
+    // Результаты
     // ------------------------------------------------------------------
 
-    /** Р§РёСЃР»Рѕ РІС‹СЏРІР»РµРЅРЅС‹С… РґРµС„РёС†РёС‚РѕРІ. */
+    /** Число выявленных дефицитов. */
     @Column(name = "gaps_count", nullable = false)
     private int gapsCount = 0;
 
-    /** Р§РёСЃР»Рѕ СЃС„РѕСЂРјРёСЂРѕРІР°РЅРЅС‹С… СЂРµРєРѕРјРµРЅРґР°С†РёР№. */
+    /** Число сформированных рекомендаций. */
     @Column(name = "recommendations_count", nullable = false)
     private int recommendationsCount = 0;
 
     /**
-     * РЎРїРёСЃРѕРє РґРµС„РёС†РёС‚РѕРІ ({@link Gap}).
-     * РҐСЂР°РЅРёС‚СЃСЏ РєР°Рє JSONB вЂ” РґР»СЏ РіРёР±РєРѕСЃС‚Рё Рё СЃРєРѕСЂРѕСЃС‚Рё.
+     * Список дефицитов ({@link Gap}).
+     * Хранится как JSONB — для гибкости и скорости.
      */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "gaps", columnDefinition = "jsonb")
     private List<Gap> gaps = new ArrayList<>();
 
-    /** РЎРІРѕРґРЅС‹Рµ РјРµС‚СЂРёРєРё (JSONB): bySeverity, byOperationType Рё С‚.Рї. */
+    /** Сводные метрики (JSONB): bySeverity, byOperationType и т.п. */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "summary", columnDefinition = "jsonb")
     private Map<String, Object> summary;
 
     // ------------------------------------------------------------------
-    // РЎР»СѓР¶РµР±РЅС‹Рµ РїРѕР»СЏ
+    // Служебные поля
     // ------------------------------------------------------------------
 
-    /** РњРѕРјРµРЅС‚ Р·Р°РїСѓСЃРєР°. */
+    /** Момент запуска. */
     @Column(name = "started_at", nullable = false, updatable = false)
     private Instant startedAt;
 
-    /** РњРѕРјРµРЅС‚ Р·Р°РІРµСЂС€РµРЅРёСЏ. */
+    /** Момент завершения. */
     @Column(name = "completed_at")
     private Instant completedAt;
 
-    /** РЎРѕРѕР±С‰РµРЅРёРµ РѕР± РѕС€РёР±РєРµ (РїСЂРё FAILED). */
+    /** Сообщение об ошибке (при FAILED). */
     @Size(max = 2000)
     @Column(name = "error", length = 2000)
     private String error;
 
-    /** РњРѕРјРµРЅС‚ РїРѕСЃР»РµРґРЅРµРіРѕ РёР·РјРµРЅРµРЅРёСЏ. */
+    /** Момент последнего изменения. */
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     // ------------------------------------------------------------------
-    // РљРѕРЅСЃС‚СЂСѓРєС‚РѕСЂС‹
+    // Конструкторы
     // ------------------------------------------------------------------
 
     protected EquipmentGapAnalysis() {
@@ -216,16 +216,16 @@ public class EquipmentGapAnalysis {
     }
 
     // ------------------------------------------------------------------
-    // Р‘РёР·РЅРµСЃ-РјРµС‚РѕРґС‹
+    // Бизнес-методы
     // ------------------------------------------------------------------
 
-    /** РџРѕРјРµС‚РёС‚СЊ Р°РЅР°Р»РёР· РєР°Рє РІС‹РїРѕР»РЅСЏСЋС‰РёР№СЃСЏ. */
+    /** Пометить анализ как выполняющийся. */
     public void markRunning() {
         this.status = GapStatus.RUNNING.name();
         touch();
     }
 
-    /** РџРѕРјРµС‚РёС‚СЊ Р°РЅР°Р»РёР· РєР°Рє СѓСЃРїРµС€РЅРѕ Р·Р°РІРµСЂС€С‘РЅРЅС‹Р№. */
+    /** Пометить анализ как успешно завершённый. */
     public void markCompleted(int gapsCount, int recommendationsCount) {
         this.status = GapStatus.COMPLETED.name();
         this.gapsCount = gapsCount;
@@ -234,7 +234,7 @@ public class EquipmentGapAnalysis {
         touch();
     }
 
-    /** РџРѕРјРµС‚РёС‚СЊ Р°РЅР°Р»РёР· РєР°Рє СѓРїР°РІС€РёР№. */
+    /** Пометить анализ как упавший. */
     public void markFailed(String error) {
         this.status = GapStatus.FAILED.name();
         this.error = error;
@@ -242,27 +242,27 @@ public class EquipmentGapAnalysis {
         touch();
     }
 
-    /** Р—Р°РІРµСЂС€С‘РЅ Р»Рё Р°РЅР°Р»РёР·. */
+    /** Завершён ли анализ. */
     public boolean isCompleted() {
         return GapStatus.COMPLETED.name().equals(this.status);
     }
 
-    /** РџСЂРѕРІР°Р»РµРЅ Р»Рё Р°РЅР°Р»РёР·. */
+    /** Провален ли анализ. */
     public boolean isFailed() {
         return GapStatus.FAILED.name().equals(this.status);
     }
 
-    /** Р’С‹РїРѕР»РЅСЏРµС‚СЃСЏ Р»Рё Р°РЅР°Р»РёР·. */
+    /** Выполняется ли анализ. */
     public boolean isRunning() {
         return GapStatus.RUNNING.name().equals(this.status);
     }
 
-    /** Р•СЃС‚СЊ Р»Рё РґРµС„РёС†РёС‚С‹. */
+    /** Есть ли дефициты. */
     public boolean hasGaps() {
         return gapsCount > 0;
     }
 
-    /** Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ Р°РЅР°Р»РёР·Р° РІ РјРёР»Р»РёСЃРµРєСѓРЅРґР°С…. */
+    /** Длительность анализа в миллисекундах. */
     public long durationMs() {
         if (startedAt == null || completedAt == null) {
             return 0;
@@ -270,7 +270,7 @@ public class EquipmentGapAnalysis {
         return java.time.Duration.between(startedAt, completedAt).toMillis();
     }
 
-    /** Р”РѕР±Р°РІРёС‚СЊ РґРµС„РёС†РёС‚. */
+    /** Добавить дефицит. */
     public void addGap(Gap gap) {
         if (gap == null) {
             return;
@@ -283,7 +283,7 @@ public class EquipmentGapAnalysis {
         touch();
     }
 
-    /** РћР±РЅРѕРІРёС‚СЊ РјРµС‚РєСѓ РІСЂРµРјРµРЅРё. */
+    /** Обновить метку времени. */
     public String getOperationType() {
         if (gaps == null || gaps.isEmpty()) return null;
         return gaps.get(0).getOperationType();
@@ -314,7 +314,7 @@ public class EquipmentGapAnalysis {
     }
 
     // ------------------------------------------------------------------
-    // Р“РµС‚С‚РµСЂС‹ Рё СЃРµС‚С‚РµСЂС‹
+    // Геттеры и сеттеры
     // ------------------------------------------------------------------
 
     public String getId() { return id; }
@@ -388,12 +388,12 @@ public class EquipmentGapAnalysis {
     }
 
     // ------------------------------------------------------------------
-    // Р’Р»РѕР¶РµРЅРЅС‹Рµ С‚РёРїС‹: Gap Рё GapStatus
+    // Вложенные типы: Gap и GapStatus
     // ------------------------------------------------------------------
 
     /**
-     * Р”РµС„РёС†РёС‚ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ вЂ” СЂРµР·СѓР»СЊС‚Р°С‚ СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРёСЏ РѕРґРЅРѕРіРѕ С‚СЂРµР±РѕРІР°РЅРёСЏ
-     * СЃ РїР°СЂРєРѕРј.
+     * Дефицит оборудования — результат сопоставления одного требования
+     * с парком.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class Gap {
@@ -527,26 +527,26 @@ public class EquipmentGapAnalysis {
     }
 
     /**
-     * РЎС‚Р°С‚СѓСЃ gap-Р°РЅР°Р»РёР·Р°.
+     * Статус gap-анализа.
      */
     public enum GapStatus {
-        /** РђРЅР°Р»РёР· РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ. */
+        /** Анализ выполняется. */
         RUNNING,
-        /** РђРЅР°Р»РёР· СѓСЃРїРµС€РЅРѕ Р·Р°РІРµСЂС€С‘РЅ. */
+        /** Анализ успешно завершён. */
         COMPLETED,
-        /** РђРЅР°Р»РёР· Р·Р°РІРµСЂС€РёР»СЃСЏ РѕС€РёР±РєРѕР№. */
+        /** Анализ завершился ошибкой. */
         FAILED
     }
 
     /**
-     * РЎС‚РµРїРµРЅСЊ РєСЂРёС‚РёС‡РЅРѕСЃС‚Рё РґРµС„РёС†РёС‚Р°.
+     * Степень критичности дефицита.
      */
     public enum GapSeverity {
-        /** РљСЂРёС‚РёС‡РЅС‹Р№ вЂ” РЅРµС‚ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ РґР»СЏ РєР»СЋС‡РµРІРѕР№ РѕРїРµСЂР°С†РёРё. */
+        /** Критичный — нет оборудования для ключевой операции. */
         CRITICAL,
-        /** Р’Р°Р¶РЅС‹Р№ вЂ” РЅРµС‚ РґР»СЏ РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅРѕР№ РёР»Рё СЃРµСЂСЊС‘Р·РЅРѕРµ РѕС‚РєР»РѕРЅРµРЅРёРµ. */
+        /** Важный — нет для вспомогательной или серьёзное отклонение. */
         MAJOR,
-        /** РќРµР·РЅР°С‡РёС‚РµР»СЊРЅС‹Р№ вЂ” РЅРµР±РѕР»СЊС€РѕРµ РѕС‚РєР»РѕРЅРµРЅРёРµ. */
+        /** Незначительный — небольшое отклонение. */
         MINOR
     }
 }

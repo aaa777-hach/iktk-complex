@@ -17,51 +17,51 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Р”РѕРјРµРЅРЅР°СЏ РјРѕРґРµР»СЊ СЂРµРєРѕРјРµРЅРґР°С†РёРё РїРѕ Р·Р°РєСЂС‹С‚РёСЋ РґРµС„РёС†РёС‚Р° РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ РРљРўРљ.
+ * Доменная модель рекомендации по закрытию дефицита оборудования ИКТК.
  *
- * <p>РћРїРёСЃС‹РІР°РµС‚ РѕРґРёРЅ РІР°СЂРёР°РЅС‚ Р·Р°РєСЂС‹С‚РёСЏ РґРµС„РёС†РёС‚Р°, СЃС„РѕСЂРјРёСЂРѕРІР°РЅРЅС‹Р№
- * {@code EquipmentRecommendationService} (РїРѕР·РёС†РёСЏ 96):
+ * <p>Описывает один вариант закрытия дефицита, сформированный
+ * {@code EquipmentRecommendationService} (позиция 96):
  * <ul>
- *   <li>{@link RecommendationType#ALTERNATIVE} вЂ” Р°Р»СЊС‚РµСЂРЅР°С‚РёРІРЅРѕРµ
- *       РёРјРµСЋС‰РµРµСЃСЏ РѕР±РѕСЂСѓРґРѕРІР°РЅРёРµ РїСЂРµРґРїСЂРёСЏС‚РёСЏ;</li>
- *   <li>{@link RecommendationType#PURCHASE} вЂ” РґРѕРєСѓРїРєР° РЅРѕРІРѕРіРѕ
- *       РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ;</li>
- *   <li>{@link RecommendationType#RENT} вЂ” Р°СЂРµРЅРґР° РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ;</li>
- *   <li>{@link RecommendationType#OUTSOURCE} вЂ” РїРµСЂРµРґР°С‡Р° РѕРїРµСЂР°С†РёРё
- *       РЅР° Р°СѓС‚СЃРѕСЂСЃ;</li>
- *   <li>{@link RecommendationType#ADJUST_PROCESS} вЂ” РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєР°
- *       РўРџ РїРѕРґ РёРјРµСЋС‰РёР№СЃСЏ РїР°СЂРє.</li>
+ *   <li>{@link RecommendationType#ALTERNATIVE} — альтернативное
+ *       имеющееся оборудование предприятия;</li>
+ *   <li>{@link RecommendationType#PURCHASE} — докупка нового
+ *       оборудования;</li>
+ *   <li>{@link RecommendationType#RENT} — аренда оборудования;</li>
+ *   <li>{@link RecommendationType#OUTSOURCE} — передача операции
+ *       на аутсорс;</li>
+ *   <li>{@link RecommendationType#ADJUST_PROCESS} — корректировка
+ *       ТП под имеющийся парк.</li>
  * </ul>
  *
- * <p><b>РЎС‚Р°С‚СѓСЃС‹:</b>
+ * <p><b>Статусы:</b>
  * <ul>
- *   <li>{@link RecommendationStatus#PENDING} вЂ” РїСЂРµРґР»РѕР¶РµРЅР°, РѕР¶РёРґР°РµС‚
- *       СЂРµС€РµРЅРёСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РЅР° С‚РѕС‡РєРµ РєРѕРЅС‚СЂРѕР»СЏ
+ *   <li>{@link RecommendationStatus#PENDING} — предложена, ожидает
+ *       решения пользователя на точке контроля
  *       {@code RECOMMENDATION_REVIEW};</li>
- *   <li>{@link RecommendationStatus#ACCEPTED} вЂ” РїСЂРёРЅСЏС‚Р°, РѕР±РѕСЂСѓРґРѕРІР°РЅРёРµ
- *       РЅР°Р·РЅР°С‡РµРЅРѕ, РїСЂРѕРµРєС‚ РїСЂРѕРґРѕР»Р¶Р°РµС‚СЃСЏ;</li>
- *   <li>{@link RecommendationStatus#REJECTED} вЂ” РѕС‚РєР»РѕРЅРµРЅР°.</li>
+ *   <li>{@link RecommendationStatus#ACCEPTED} — принята, оборудование
+ *       назначено, проект продолжается;</li>
+ *   <li>{@link RecommendationStatus#REJECTED} — отклонена.</li>
  * </ul>
  *
- * <p><b>РљР»СЋС‡РµРІС‹Рµ Р°С‚СЂРёР±СѓС‚С‹:</b>
+ * <p><b>Ключевые атрибуты:</b>
  * <ul>
- *   <li>{@code projectId} вЂ” РїСЂРѕРµРєС‚;</li>
- *   <li>{@code gapId} вЂ” РґРµС„РёС†РёС‚, Рє РєРѕС‚РѕСЂРѕРјСѓ РѕС‚РЅРѕСЃРёС‚СЃСЏ СЂРµРєРѕРјРµРЅРґР°С†РёСЏ;</li>
- *   <li>{@code type} вЂ” С‚РёРї СЂРµРєРѕРјРµРЅРґР°С†РёРё;</li>
- *   <li>{@code equipmentId} вЂ” РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ
- *       (РґР»СЏ ALTERNATIVE);</li>
- *   <li>{@code vendorId} вЂ” РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїРѕСЃС‚Р°РІС‰РёРєР°
- *       (РґР»СЏ PURCHASE / RENT);</li>
- *   <li>{@code rationale} вЂ” РѕР±РѕСЃРЅРѕРІР°РЅРёРµ;</li>
- *   <li>{@code score} вЂ” РёРЅС‚РµРіСЂР°Р»СЊРЅС‹Р№ СЃРєРѕСЂ (0вЂ¦1);</li>
- *   <li>{@code estimatedCost} вЂ” РѕС†РµРЅРѕС‡РЅР°СЏ СЃС‚РѕРёРјРѕСЃС‚СЊ;</li>
- *   <li>{@code leadTimeDays} вЂ” СЃСЂРѕРє СЂРµР°Р»РёР·Р°С†РёРё (РґРЅРё);</li>
- *   <li>{@code status} вЂ” СЃС‚Р°С‚СѓСЃ;</li>
- *   <li>{@code acceptedBy}, {@code acceptedAt} вЂ” РєС‚Рѕ Рё РєРѕРіРґР° РїСЂРёРЅСЏР»;</li>
- *   <li>{@code parameters} вЂ” РїСЂРѕРёР·РІРѕР»СЊРЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ (JSONB).</li>
+ *   <li>{@code projectId} — проект;</li>
+ *   <li>{@code gapId} — дефицит, к которому относится рекомендация;</li>
+ *   <li>{@code type} — тип рекомендации;</li>
+ *   <li>{@code equipmentId} — идентификатор оборудования
+ *       (для ALTERNATIVE);</li>
+ *   <li>{@code vendorId} — идентификатор поставщика
+ *       (для PURCHASE / RENT);</li>
+ *   <li>{@code rationale} — обоснование;</li>
+ *   <li>{@code score} — интегральный скор (0…1);</li>
+ *   <li>{@code estimatedCost} — оценочная стоимость;</li>
+ *   <li>{@code leadTimeDays} — срок реализации (дни);</li>
+ *   <li>{@code status} — статус;</li>
+ *   <li>{@code acceptedBy}, {@code acceptedAt} — кто и когда принял;</li>
+ *   <li>{@code parameters} — произвольные параметры (JSONB).</li>
  * </ul>
  *
- * <p>РўР°Р±Р»РёС†Р°: {@code equipment_recommendations} (PostgreSQL, РјРёРіСЂР°С†РёСЏ V6).
+ * <p>Таблица: {@code equipment_recommendations} (PostgreSQL, миграция V6).
  */
 @Entity
 @Table(
@@ -81,110 +81,110 @@ import java.util.Objects;
 public class EquipmentRecommendation {
 
     // ------------------------------------------------------------------
-    // РРґРµРЅС‚РёС„РёРєР°С†РёСЏ
+    // Идентификация
     // ------------------------------------------------------------------
 
-    /** РЈРЅРёРєР°Р»СЊРЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ (UUID). */
+    /** Уникальный идентификатор (UUID). */
     @Id
     @Column(name = "id", nullable = false, length = 64, updatable = false)
     private String id;
 
-    /** РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕРµРєС‚Р°. */
+    /** Идентификатор проекта. */
     @Column(name = "project_id", nullable = false, length = 64)
     private String projectId;
 
-    /** РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РґРµС„РёС†РёС‚Р°. */
+    /** Идентификатор дефицита. */
     @Column(name = "gap_id", length = 64)
     private String gapId;
 
-    /** РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ gap-Р°РЅР°Р»РёР·Р°, РІ СЂР°РјРєР°С… РєРѕС‚РѕСЂРѕРіРѕ СЃС„РѕСЂРјРёСЂРѕРІР°РЅР° СЂРµРєРѕРјРµРЅРґР°С†РёСЏ. */
+    /** Идентификатор gap-анализа, в рамках которого сформирована рекомендация. */
     @Column(name = "analysis_id", length = 64)
     private String analysisId;
 
     // ------------------------------------------------------------------
-    // РўРёРї Рё СЃС‚Р°С‚СѓСЃ
+    // Тип и статус
     // ------------------------------------------------------------------
 
-    /** РўРёРї СЂРµРєРѕРјРµРЅРґР°С†РёРё: ALTERNATIVE, PURCHASE, RENT, OUTSOURCE, ADJUST_PROCESS. */
+    /** Тип рекомендации: ALTERNATIVE, PURCHASE, RENT, OUTSOURCE, ADJUST_PROCESS. */
     @NotBlank
     @Size(max = 32)
     @Column(name = "type", nullable = false, length = 32)
     private String type;
 
-    /** РЎС‚Р°С‚СѓСЃ: PENDING, ACCEPTED, REJECTED. */
+    /** Статус: PENDING, ACCEPTED, REJECTED. */
     @Column(name = "status", nullable = false, length = 32)
     private String status = RecommendationStatus.PENDING.name();
 
     // ------------------------------------------------------------------
-    // РЎСЃС‹Р»РєРё РЅР° РѕР±РѕСЂСѓРґРѕРІР°РЅРёРµ Рё РїРѕСЃС‚Р°РІС‰РёРєР°
+    // Ссылки на оборудование и поставщика
     // ------------------------------------------------------------------
 
-    /** РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ (РґР»СЏ ALTERNATIVE). */
+    /** Идентификатор оборудования (для ALTERNATIVE). */
     @Size(max = 64)
     @Column(name = "equipment_id", length = 64)
     private String equipmentId;
 
-    /** РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїРѕСЃС‚Р°РІС‰РёРєР° (РґР»СЏ PURCHASE / RENT). */
+    /** Идентификатор поставщика (для PURCHASE / RENT). */
     @Column(name = "vendor_id", length = 64)
     private String vendorId;
 
     // ------------------------------------------------------------------
-    // РћР±РѕСЃРЅРѕРІР°РЅРёРµ Рё РјРµС‚СЂРёРєРё
+    // Обоснование и метрики
     // ------------------------------------------------------------------
 
-    /** РћР±РѕСЃРЅРѕРІР°РЅРёРµ СЂРµРєРѕРјРµРЅРґР°С†РёРё (С‡РµР»РѕРІРµРєРѕС‡РёС‚Р°РµРјРѕРµ). */
+    /** Обоснование рекомендации (человекочитаемое). */
     @Size(max = 2000)
     @Column(name = "rationale", length = 2000)
     private String rationale;
 
-    /** РЎРєРѕСЂ (0вЂ¦1). */
+    /** Скор (0…1). */
     @Column(name = "score", precision = 8, scale = 4)
     private BigDecimal score;
 
-    /** РћС†РµРЅРѕС‡РЅР°СЏ СЃС‚РѕРёРјРѕСЃС‚СЊ. */
+    /** Оценочная стоимость. */
     @Column(name = "estimated_cost", precision = 14, scale = 2)
     private BigDecimal estimatedCost;
 
-    /** РЎСЂРѕРє СЂРµР°Р»РёР·Р°С†РёРё (РґРЅРё). */
+    /** Срок реализации (дни). */
     @Column(name = "lead_time_days")
     private Integer leadTimeDays;
 
     // ------------------------------------------------------------------
-    // РџСЂРёРЅСЏС‚РёРµ СЂРµС€РµРЅРёСЏ
+    // Принятие решения
     // ------------------------------------------------------------------
 
-    /** РљС‚Рѕ РїСЂРёРЅСЏР» СЂРµС€РµРЅРёРµ. */
+    /** Кто принял решение. */
     @Size(max = 128)
     @Column(name = "accepted_by", length = 128)
     private String acceptedBy;
 
-    /** РљРѕРіРґР° РїСЂРёРЅСЏС‚Рѕ. */
+    /** Когда принято. */
     @Column(name = "accepted_at")
     private Instant acceptedAt;
 
     // ------------------------------------------------------------------
-    // Р”РѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ
+    // Дополнительно
     // ------------------------------------------------------------------
 
-    /** РџСЂРѕРёР·РІРѕР»СЊРЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ (JSONB). */
+    /** Произвольные параметры (JSONB). */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "parameters", columnDefinition = "jsonb")
     private Map<String, Object> parameters;
 
     // ------------------------------------------------------------------
-    // РЎР»СѓР¶РµР±РЅС‹Рµ РїРѕР»СЏ
+    // Служебные поля
     // ------------------------------------------------------------------
 
-    /** РњРѕРјРµРЅС‚ СЃРѕР·РґР°РЅРёСЏ. */
+    /** Момент создания. */
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    /** РњРѕРјРµРЅС‚ РїРѕСЃР»РµРґРЅРµРіРѕ РёР·РјРµРЅРµРЅРёСЏ. */
+    /** Момент последнего изменения. */
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     // ------------------------------------------------------------------
-    // РљРѕРЅСЃС‚СЂСѓРєС‚РѕСЂС‹
+    // Конструкторы
     // ------------------------------------------------------------------
 
     protected EquipmentRecommendation() {
@@ -274,10 +274,10 @@ public class EquipmentRecommendation {
     }
 
     // ------------------------------------------------------------------
-    // Р‘РёР·РЅРµСЃ-РјРµС‚РѕРґС‹
+    // Бизнес-методы
     // ------------------------------------------------------------------
 
-    /** РџСЂРёРЅСЏС‚СЊ СЂРµРєРѕРјРµРЅРґР°С†РёСЋ. */
+    /** Принять рекомендацию. */
     public void accept(String acceptedBy) {
         this.status = RecommendationStatus.ACCEPTED.name();
         this.acceptedBy = acceptedBy;
@@ -285,7 +285,7 @@ public class EquipmentRecommendation {
         touch();
     }
 
-    /** РћС‚РєР»РѕРЅРёС‚СЊ СЂРµРєРѕРјРµРЅРґР°С†РёСЋ. */
+    /** Отклонить рекомендацию. */
     public void reject(String reason) {
         this.status = RecommendationStatus.REJECTED.name();
         this.rationale = (this.rationale == null ? "" : this.rationale + " | ")
@@ -293,43 +293,43 @@ public class EquipmentRecommendation {
         touch();
     }
 
-    /** РћР¶РёРґР°РµС‚ Р»Рё СЂРµРєРѕРјРµРЅРґР°С†РёСЏ СЂРµС€РµРЅРёСЏ. */
+    /** Ожидает ли рекомендация решения. */
     public boolean isPending() {
         return RecommendationStatus.PENDING.name().equals(this.status);
     }
 
-    /** РџСЂРёРЅСЏС‚Р° Р»Рё СЂРµРєРѕРјРµРЅРґР°С†РёСЏ. */
+    /** Принята ли рекомендация. */
     public boolean isAccepted() {
         return RecommendationStatus.ACCEPTED.name().equals(this.status);
     }
 
-    /** РћС‚РєР»РѕРЅРµРЅР° Р»Рё СЂРµРєРѕРјРµРЅРґР°С†РёСЏ. */
+    /** Отклонена ли рекомендация. */
     public boolean isRejected() {
         return RecommendationStatus.REJECTED.name().equals(this.status);
     }
 
-    /** РЇРІР»СЏРµС‚СЃСЏ Р»Рё СЂРµРєРѕРјРµРЅРґР°С†РёСЏ Р°Р»СЊС‚РµСЂРЅР°С‚РёРІРѕР№ РЅР° РїСЂРµРґРїСЂРёСЏС‚РёРё. */
+    /** Является ли рекомендация альтернативой на предприятии. */
     public boolean isAlternative() {
         return RecommendationType.ALTERNATIVE.name().equals(this.type);
     }
 
-    /** РўСЂРµР±СѓРµС‚СЃСЏ Р»Рё РґРѕРєСѓРїРєР°/Р°СЂРµРЅРґР°. */
+    /** Требуется ли докупка/аренда. */
     public boolean requiresPurchase() {
         return RecommendationType.PURCHASE.name().equals(this.type)
                 || RecommendationType.RENT.name().equals(this.type);
     }
 
-    /** РЎРІСЏР·Р°РЅР° Р»Рё СЃ РІРЅРµС€РЅРёРј РїРѕСЃС‚Р°РІС‰РёРєРѕРј. */
+    /** Связана ли с внешним поставщиком. */
     public boolean hasVendor() {
         return this.vendorId != null && !this.vendorId.isBlank();
     }
 
-    /** РЎРІСЏР·Р°РЅР° Р»Рё СЃ РѕР±РѕСЂСѓРґРѕРІР°РЅРёРµРј РЅР° РїСЂРµРґРїСЂРёСЏС‚РёРё. */
+    /** Связана ли с оборудованием на предприятии. */
     public boolean hasEquipment() {
         return this.equipmentId != null && !this.equipmentId.isBlank();
     }
 
-    /** РџРѕР»СѓС‡РёС‚СЊ С‚РёРї РєР°Рє enum. */
+    /** Получить тип как enum. */
     public RecommendationType getTypeEnum() {
         try {
             return RecommendationType.valueOf(this.type);
@@ -338,7 +338,7 @@ public class EquipmentRecommendation {
         }
     }
 
-    /** РџРѕР»СѓС‡РёС‚СЊ СЃС‚Р°С‚СѓСЃ РєР°Рє enum. */
+    /** Получить статус как enum. */
     public RecommendationStatus getStatusEnum() {
         try {
             return RecommendationStatus.valueOf(this.status);
@@ -347,13 +347,13 @@ public class EquipmentRecommendation {
         }
     }
 
-    /** РћР±РЅРѕРІРёС‚СЊ РјРµС‚РєСѓ РІСЂРµРјРµРЅРё. */
+    /** Обновить метку времени. */
     private void touch() {
         this.updatedAt = Instant.now();
     }
 
     // ------------------------------------------------------------------
-    // Р“РµС‚С‚РµСЂС‹ Рё СЃРµС‚С‚РµСЂС‹
+    // Геттеры и сеттеры
     // ------------------------------------------------------------------
 
     public String getId() { return id; }
@@ -440,34 +440,34 @@ public class EquipmentRecommendation {
     }
 
     // ------------------------------------------------------------------
-    // Р’Р»РѕР¶РµРЅРЅС‹Рµ enum'С‹
+    // Вложенные enum'ы
     // ------------------------------------------------------------------
 
     /**
-     * РўРёРї СЂРµРєРѕРјРµРЅРґР°С†РёРё.
+     * Тип рекомендации.
      */
     public enum RecommendationType {
-        /** РђР»СЊС‚РµСЂРЅР°С‚РёРІРЅРѕРµ РёРјРµСЋС‰РµРµСЃСЏ РѕР±РѕСЂСѓРґРѕРІР°РЅРёРµ РїСЂРµРґРїСЂРёСЏС‚РёСЏ. */
+        /** Альтернативное имеющееся оборудование предприятия. */
         ALTERNATIVE,
-        /** Р”РѕРєСѓРїРєР° РЅРѕРІРѕРіРѕ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ. */
+        /** Докупка нового оборудования. */
         PURCHASE,
-        /** РђСЂРµРЅРґР° РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ. */
+        /** Аренда оборудования. */
         RENT,
-        /** РџРµСЂРµРґР°С‡Р° РѕРїРµСЂР°С†РёРё РЅР° Р°СѓС‚СЃРѕСЂСЃ. */
+        /** Передача операции на аутсорс. */
         OUTSOURCE,
-        /** РљРѕСЂСЂРµРєС‚РёСЂРѕРІРєР° РўРџ РїРѕРґ РёРјРµСЋС‰РёР№СЃСЏ РїР°СЂРє. */
+        /** Корректировка ТП под имеющийся парк. */
         ADJUST_PROCESS
     }
 
     /**
-     * РЎС‚Р°С‚СѓСЃ СЂРµРєРѕРјРµРЅРґР°С†РёРё.
+     * Статус рекомендации.
      */
     public enum RecommendationStatus {
-        /** РџСЂРµРґР»РѕР¶РµРЅР°, РѕР¶РёРґР°РµС‚ СЂРµС€РµРЅРёСЏ. */
+        /** Предложена, ожидает решения. */
         PENDING,
-        /** РџСЂРёРЅСЏС‚Р°, РѕР±РѕСЂСѓРґРѕРІР°РЅРёРµ РЅР°Р·РЅР°С‡РµРЅРѕ. */
+        /** Принята, оборудование назначено. */
         ACCEPTED,
-        /** РћС‚РєР»РѕРЅРµРЅР°. */
+        /** Отклонена. */
         REJECTED
     }
 }
