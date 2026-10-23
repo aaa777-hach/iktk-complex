@@ -20,6 +20,7 @@ import ru.iktk.recommendation.repository.EquipmentRequirementRepository;
 import ru.iktk.recommendation.repository.EquipmentRecommendationRepository;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -128,7 +129,14 @@ public class GapAnalysisService {
                 projectId, strategy,
                 request.getRequirements() == null ? 0 : request.getRequirements().size());
 
-        String analysisId = UUID.randomUUID().toString();
+        Optional<EquipmentGapAnalysis> reusable = findReusableAnalysis(projectId, strategy);
+        if (reusable.isPresent()) {
+            log.info("run: идемпотентный повтор, возвращаю существующий analysisId={}, status={}",
+                    reusable.get().getId(), reusable.get().getStatus());
+            return mapper.toGapResponse(reusable.get());
+        }
+
+String analysisId = UUID.randomUUID().toString();
         Instant startedAt = Instant.now();
 
         EquipmentGapAnalysis analysis = EquipmentGapAnalysis.builder()
@@ -228,7 +236,19 @@ public class GapAnalysisService {
      *
      * @return дефицит или {@code null}, если оборудование найдено
      */
-    private EquipmentGapAnalysis.Gap matchRequirement(EquipmentRequirement requirement,
+    /**
+     * Найти свежий анализ по projectId+strategy для идемпотентности.
+     * Окно 5 минут: покрывает ретраи оркестратора и параллельные доставки брокера.
+     * RUNNING и COMPLETED — переиспользуются; FAILED — игнорируется (нужен retry).
+     */
+    private Optional<EquipmentGapAnalysis> findReusableAnalysis(String projectId, String strategy) {
+        Instant threshold = Instant.now().minus(Duration.ofMinutes(5));
+        return gapRepository.findTopByProjectIdAndStrategyOrderByStartedAtDesc(projectId, strategy)
+                .filter(a -> a.getStartedAt() != null && a.getStartedAt().isAfter(threshold))
+                .filter(a -> STATUS_RUNNING.equals(a.getStatus()) || STATUS_COMPLETED.equals(a.getStatus()));
+    }
+
+private EquipmentGapAnalysis.Gap matchRequirement(EquipmentRequirement requirement,
                                                        String strategy) {
         log.debug("matchRequirement: operationType={}, strategy={}",
                 requirement.getOperationType(), strategy);

@@ -10,5 +10,6 @@ import java.util.Optional;
 @Repository
 public interface EquipmentGapAnalysisRepository extends JpaRepository<EquipmentGapAnalysis, String> {
     Optional<EquipmentGapAnalysis> findTopByProjectIdOrderByStartedAtDesc(String projectId);
+    Optional<EquipmentGapAnalysis> findTopByProjectIdAndStrategyOrderByStartedAtDesc(String projectId, String strategy);
     List<EquipmentGapAnalysis> findByProjectIdOrderByStartedAtDesc(String projectId);
 }

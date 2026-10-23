@@ -92,7 +92,13 @@ public class RecommendationCommandConsumer {
         request.setRequirements(reqs);
 
         GapAnalysisResponse response = gapAnalysisService.run(request);
-        publishResults("RECOMMENDATIONS_READY", projectId, response);
+        String status = response.getStatus();
+        if ("COMPLETED".equals(status) || "FAILED".equals(status)) {
+            publishResults("RECOMMENDATIONS_READY", projectId, response);
+        } else {
+            log.info("handleGapAnalysis: analysis {} still {}, skip publish",
+                    response.getId(), status);
+        }
     }
 
     private void handleOutsourcingSelected(JsonNode root, String projectId) throws Exception {
