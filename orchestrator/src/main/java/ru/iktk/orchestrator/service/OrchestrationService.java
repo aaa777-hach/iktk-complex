@@ -144,14 +144,7 @@ public class OrchestrationService {
 
         log.info("sendEvent: projectId={}, event={}, payload={}", projectId, event, payload);
 
-        if (!sm.sendEvent(org.springframework.messaging.support.MessageBuilder
-                .withPayload(event)
-                .setHeader("projectId", projectId)
-                .setHeader("payload", payload)
-                .build())) {
-            throw new OrchestrationException(
-                    "Событие " + event + " не принято в состоянии " + sm.getState().getId());
-        }
+        dispatchEvent(projectId, sm, event, payload);
 
         decisionLogService.log(projectId, "EVENT_SENT",
                 Map.of("event", event.name(),
@@ -265,7 +258,10 @@ public class OrchestrationService {
         ProjectState newState = sm.getState().getId();
         persistState(projectId, sm, newState);
 
+
         if (transitionHandler.isAutoState(newState)) {
+            transitionHandler.route(projectId, newState, sm, payload);
+        }        if (transitionHandler.isAutoState(newState)) {
             ProjectEvent autoEvent = transitionHandler.nextAuto(newState);
             if (autoEvent != null) {
                 dispatchEvent(projectId, sm, autoEvent, null);

@@ -47,4 +47,19 @@ public class RabbitTopologyConfig {
                 .to(recommendationCommandsExchange)
                 .with(routingPrefix + ".recommendation");
     }
+    /**
+     * Второй binding — совместимость с оркестратором.
+     * Оркестратор публикует с routing key {@code iktk.command.<module>},
+     * где module = "recommendation-service" (см. TransitionHandler.ROUTES),
+     * то есть {@code iktk.command.recommendation-service}.
+     * Первый binding ({@code iktk.command.recommendation}) оставлен
+     * для обратной совместимости с ручными тестами.
+     */
+    @Bean
+    public Binding recommendationCommandsBindingAlt(Queue recommendationCommandsQueue,
+                                                    TopicExchange recommendationCommandsExchange) {
+        return BindingBuilder.bind(recommendationCommandsQueue)
+                .to(recommendationCommandsExchange)
+                .with(routingPrefix + ".recommendation-service");
+    }
 }

@@ -110,21 +110,41 @@ public class RecommendationCommandConsumer {
         }
         OutsourcingOptionDto dto = outsourcingService.select(optionId, comment);
         Map<String, Object> event = baseEvent("OUTSOURCING_SELECTED", projectId);
+        event.put("event", "OUTSOURCING_SELECTED");
         event.put("optionId", dto.getId());
         event.put("contractor", dto.getContractor());
         event.put("cost", dto.getCost());
         event.put("status", dto.getStatus());
-        rabbitTemplate.convertAndSend(resultsExchange, resultsRoutingPrefix + ".OUTSOURCING_SELECTED", objectMapper.writeValueAsString(event));
+        rabbitTemplate.convertAndSend(
+                resultsExchange,
+                resultsRoutingPrefix + ".OUTSOURCING_SELECTED",
+                objectMapper.writeValueAsString(event),
+                m -> {
+                    m.getMessageProperties().setHeader("event", "OUTSOURCING_SELECTED");
+                    m.getMessageProperties().setHeader("projectId", projectId);
+                    m.getMessageProperties().setHeader("module", "recommendation-service");
+                    return m;
+                });
     }
 
     private void publishResults(String eventType, String projectId, GapAnalysisResponse response) throws Exception {
         Map<String, Object> event = baseEvent(eventType, projectId);
+        event.put("event", eventType);
         event.put("analysisId", response.getId());
         event.put("status", response.getStatus());
         event.put("gapsCount", response.getGapsCount());
         event.put("recommendationsCount", response.getRecommendationsCount());
         event.put("strategy", response.getStrategy());
-        rabbitTemplate.convertAndSend(resultsExchange, resultsRoutingPrefix + "." + eventType, objectMapper.writeValueAsString(event));
+        rabbitTemplate.convertAndSend(
+                resultsExchange,
+                resultsRoutingPrefix + "." + eventType,
+                objectMapper.writeValueAsString(event),
+                m -> {
+                    m.getMessageProperties().setHeader("event", eventType);
+                    m.getMessageProperties().setHeader("projectId", projectId);
+                    m.getMessageProperties().setHeader("module", "recommendation-service");
+                    return m;
+                });
         log.info("Published {} for project={} analysis={}", eventType, projectId, response.getId());
     }
 

@@ -127,8 +127,8 @@ public class TransitionHandler {
             case GEOMETRY_INPUT        -> ProjectEvent.GEOMETRY_UPLOADED;
             case GEOMETRY_ANALYSIS     -> ProjectEvent.IS_PART;      // по умолчанию деталь
             case ASSEMBLY_ANALYSIS     -> ProjectEvent.BOM_EXTRACTED;
-            case EQUIPMENT_MATCHING    -> ProjectEvent.EQUIPMENT_MATCHED; // по умолчанию достаточно
-            case EQUIPMENT_GAP_RESOLUTION -> ProjectEvent.RECOMMENDATIONS_READY;
+            case EQUIPMENT_MATCHING    -> null; // wait for external EQUIPMENT_GAP (techdebt: equipment-service consumer)
+            case EQUIPMENT_GAP_RESOLUTION -> null; // wait for external RECOMMENDATIONS_READY from recommendation-service
             case NORMING               -> ProjectEvent.NORMS_READY;
             case DOCUMENTATION         -> ProjectEvent.DOCUMENTATION_READY;
             default -> null;
