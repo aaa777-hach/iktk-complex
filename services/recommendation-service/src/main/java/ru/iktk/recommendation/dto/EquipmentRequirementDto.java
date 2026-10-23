@@ -1,5 +1,6 @@
 package ru.iktk.recommendation.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +23,7 @@ public class EquipmentRequirementDto {
     private String material;
     private BigDecimal requiredPowerKw;
     private BigDecimal requiredForceKn;
+    @JsonDeserialize(using = ru.iktk.recommendation.config.LenientBooleanDeserializer.class)
     private Boolean requiredCnc;
     private Integer quantity;
     private String notes;
