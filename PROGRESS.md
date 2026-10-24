@@ -1117,8 +1117,8 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 10. **`generateForGap` фактически принимает `analysisId`**, не `gapId` (внутри `gapRepository.findById(gapId)` — ищет `EquipmentGapAnalysis` по id).
 11. **`git log` показывает кракозябры в кириллице** — это CP1251-декодирование UTF-8 stdout в PowerShell 5.1, а не порча коммита. Лечится `[Console]::OutputEncoding = [Text.Encoding]::UTF8` перед вызовом git. Не путать с реальной порчей файлов (грабли №3, №5).
 12. **Массовое преобразование CP1251→UTF8 по всему файлу может испортить уже корректные строковые литералы с кириллицей.** Если в файле смешанное состояние (Javadoc порчен, а литералы — нет), преобразование ломает литералы (`"Отклонено: "` → `"���������: "`). Решение: проверять diff на не-комментарные `+`-строки перед коммитом, либо применять преобразование точечно к блокам комментариев.
-13. **`mvn verify` в `equipment-service` падает на `jacoco:check`*
-* …
+13. **`mvn verify` в `equipment-service` падает на `jacoco:check`** (60/40 vs 75/80) — предсуществующая проблема, не связана с правками документации. При работе с этим сервисом — либо добавлять тесты, либо временно `-Djacoco.skip=true` для проверки кода, либо чинить техдолг `jacoco-eq`.
+14. **Java-код нельзя вставлять в PowerShell.** Символы `@DisplayName`, `void`, `verify(...)`, `&&` — синтаксис Java; PowerShell ругается `ParserError`/`UnexpectedToken`, и это **не** ошибка файла. Java-код правится через `code`, либо автоматической заменой строк по шаблону (ReadAllLines -> цикл -> WriteAllLines + UTF8Encoding $false). В PowerShell вставляй только команды.
 
 ### Правило на будущее
 В конце каждой сессии: `mvn verify` → `EXIT: 0` → коммит кода → дописать в `PROGRESS.md` раздел `## 📌 СЕССИЯ <дата>` (5–10 строк) → `git commit -m "docs: PROGRESS.md — сессия <дата>"`.
@@ -1150,3 +1150,12 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Покрытие: **lines 60.70% → 80.19%** (+19.5 п.п.), **branches 40.98% → 88.11%** (+47.1 п.п.).
 - `mvn -pl services/equipment-service -am verify` → **BUILD SUCCESS**, 126/126, `jacoco:check` passed.
 | ~~jacoco-eq~~ | ~~`equipment-service`: покрытие 60/40 при порогах 75/80~~ ✅ закрыт (lines 80.2%, branches 88.1%) | — |
+
+### Обновление 2026-10-24 (orchestrator: обрыв RECOMMENDATION_REVIEW -> ACCEPTED закрыт)
+
+- Фикс `TransitionHandler.route()`: `ASSEMBLY_PROCESS_PLANNING` добавлен в исключение из точки контроля (симметрично `PART_PROCESS_PLANNING`).
+- Раньше после `acceptRecommendation` проект застревал в `ASSEMBLY_PROCESS_PLANNING`: команда в `assembly-process-service` не уходила (`AWAITING_DECISION`), `approve()` проскакивал этап через `ASSEMBLY_PROCESS_READY -> NORMING`.
+- Теперь: `run()` -> `route(ASSEMBLY_PROCESS_PLANNING)` -> `assembly-process-service` -> `ASSEMBLY_PROCESS_READY` -> `NORMING` -> каскад до `TECHNICAL_CONTROL`.
+- Тесты: `AssemblyCycleIntegrationTest.assemblyProcessPlanning_routedToModule` (переписан), `TransitionHandlerTest.route_assemblyProcessPlanning_sendsDespitePointOfControl` (новый), `route_partProcessPlanning_sendsDespitePointOfControl` (восстановлен).
+- Предсуществующий баг `nextAuto_knownStates`: ожидания `EQUIPMENT_MATCHED`/`RECOMMENDATIONS_READY` противоречили `nextAuto() -> null` для развилки `EQUIPMENT_MATCHING` и внешнего `EQUIPMENT_GAP_RESOLUTION`; тест обновлён на `isNull()`.
+- `mvn -pl orchestrator -am verify` -> **BUILD SUCCESS**, 103/103, jacoco passed.
