@@ -60,14 +60,15 @@ class AssemblyCycleIntegrationTest {
     }
 
     @Test
-    @DisplayName("ASSEMBLY_PROCESS_PLANNING: run() НЕ вызывает send (точка контроля)")
-    void assemblyProcessPlanning_noDirectCall() {
+    @DisplayName("ASSEMBLY_PROCESS_PLANNING: run() маршрутизирует в assembly-process-service")
+    void assemblyProcessPlanning_routedToModule() {
         String projectId = createRuntime(ProjectState.ASSEMBLY_PROCESS_PLANNING);
 
         orchestrationService.run(projectId);
 
-        verify(moduleCommandProducer, never()).send(
-                anyString(), eq("assembly-process-service"), any(), any());
+        verify(moduleCommandProducer).send(
+                eq(projectId), eq("assembly-process-service"),
+                eq(ProjectState.ASSEMBLY_PROCESS_PLANNING), nullable(Map.class));
     }
 
     @Test

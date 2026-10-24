@@ -49,8 +49,8 @@ class TransitionHandlerTest {
         assertThat(handler.nextAuto(ProjectState.GEOMETRY_INPUT)).isEqualTo(ProjectEvent.GEOMETRY_UPLOADED);
         assertThat(handler.nextAuto(ProjectState.GEOMETRY_ANALYSIS)).isEqualTo(ProjectEvent.IS_PART);
         assertThat(handler.nextAuto(ProjectState.ASSEMBLY_ANALYSIS)).isEqualTo(ProjectEvent.BOM_EXTRACTED);
-        assertThat(handler.nextAuto(ProjectState.EQUIPMENT_MATCHING)).isEqualTo(ProjectEvent.EQUIPMENT_MATCHED);
-        assertThat(handler.nextAuto(ProjectState.EQUIPMENT_GAP_RESOLUTION)).isEqualTo(ProjectEvent.RECOMMENDATIONS_READY);
+        assertThat(handler.nextAuto(ProjectState.EQUIPMENT_MATCHING)).isNull();
+        assertThat(handler.nextAuto(ProjectState.EQUIPMENT_GAP_RESOLUTION)).isNull();
         assertThat(handler.nextAuto(ProjectState.NORMING)).isEqualTo(ProjectEvent.NORMS_READY);
         assertThat(handler.nextAuto(ProjectState.DOCUMENTATION)).isEqualTo(ProjectEvent.DOCUMENTATION_READY);
     }
@@ -147,6 +147,16 @@ class TransitionHandlerTest {
 
         verify(moduleCommandProducer).send(
                 eq("p1"), eq("casting"), eq(ProjectState.PART_PROCESS_PLANNING), any());
+        verify(decisionLogService).log(eq("p1"), eq("ROUTED"), any(Map.class));
+    }
+
+    @Test
+    @DisplayName("route: ASSEMBLY_PROCESS_PLANNING — исключение из точки контроля, send + ROUTED")
+    void route_assemblyProcessPlanning_sendsDespitePointOfControl() {
+        handler.route("p1", ProjectState.ASSEMBLY_PROCESS_PLANNING, stateMachine, null);
+
+        verify(moduleCommandProducer).send(
+                eq("p1"), eq("assembly-process-service"), eq(ProjectState.ASSEMBLY_PROCESS_PLANNING), any());
         verify(decisionLogService).log(eq("p1"), eq("ROUTED"), any(Map.class));
     }
 

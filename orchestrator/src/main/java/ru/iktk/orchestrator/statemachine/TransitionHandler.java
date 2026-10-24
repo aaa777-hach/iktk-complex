@@ -98,7 +98,9 @@ public class TransitionHandler {
             return;
         }
 
-        if (state.isPointOfControl() && state != ProjectState.PART_PROCESS_PLANNING) {
+        if (state.isPointOfControl()
+                && state != ProjectState.PART_PROCESS_PLANNING
+                && state != ProjectState.ASSEMBLY_PROCESS_PLANNING) {
             log.info("route: projectId={}, state={} — точка контроля, ожидается решение пользователя",
                     projectId, state);
             decisionLogService.log(projectId, "AWAITING_DECISION",
