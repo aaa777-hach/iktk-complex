@@ -1101,7 +1101,7 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 | 3b | `"requiredCnc":"true"` (строка) → Jackson; нужен кастомный десериализатор | 20 мин (если оркестратор шлёт строку) |
 | 4b | Повторная публикация `RECOMMENDATIONS_READY` при идемпотентном повторе | by design, оставить |
 | Javadoc | Кракозябры в комментариях `EquipmentRecommendation`, `EquipmentGapAnalysis`, `EquipmentRequirement` | 30 мин, косметика |
-| jacoco-eq | `equipment-service`: покрытие 60/40 при порогах 75/80 (lines/branches). Нужны тесты на `CapabilityMatchingService` (170 стр.) и/или исключение контроллеров/репозиториев из check | 2–3 ч |
+| ~~jacoco-eq~~ | ~~`equipment-service`: покрытие 60/40 при порогах 75/80~~ ✅ закрыт (lines 80.2%, branches 88.1%) | — |
 
 ### Грабли (не повторять)
 
@@ -1142,3 +1142,11 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Стиль — по эталону `Equipment.java` (назначение, `<ul>` атрибутов, `<p>Таблица: … миграция VN`). Версии миграций: assignments — V4, остальные — V3.
 - `mvn -pl services/equipment-service -am verify` → **BUILD FAILURE по jacoco** (см. техдолг ниже). 84 теста — все зелёные, Javadoc к покрытию не относится.
 - Проверено на HEAD (`git stash` → verify → `stash pop`): те же `Rule violated` — проблема предсуществующая.
+
+| ~~jacoco-eq~~ | ~~`equipment-service`: покрытие 60/40 при порогах 75/80~~ ✅ закрыт (lines 80.2%, branches 88.1%) | — |
+
+- Добавлены unit-тесты `CapabilityMatchingServiceTest` (42 теста, JUnit 5 + Mockito, `@ExtendWith(MockitoExtension.class)`).
+- Покрыты: guards (`null`/blank/empty), фильтры (CNC, power, force, accuracy, material, dimensions), парсинг (`str`/`bool`/`dec`/`parseAccuracy`/`parseDims`), сортировка по score, `findAlternatives`, `assign` (existing/new/null).
+- Покрытие: **lines 60.70% → 80.19%** (+19.5 п.п.), **branches 40.98% → 88.11%** (+47.1 п.п.).
+- `mvn -pl services/equipment-service -am verify` → **BUILD SUCCESS**, 126/126, `jacoco:check` passed.
+| ~~jacoco-eq~~ | ~~`equipment-service`: покрытие 60/40 при порогах 75/80~~ ✅ закрыт (lines 80.2%, branches 88.1%) | — |
