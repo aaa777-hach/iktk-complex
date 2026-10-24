@@ -1102,6 +1102,7 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 | 4b | Повторная публикация `RECOMMENDATIONS_READY` при идемпотентном повторе | by design, оставить |
 | Javadoc | Кракозябры в комментариях `EquipmentRecommendation`, `EquipmentGapAnalysis`, `EquipmentRequirement` | 30 мин, косметика |
 | ~~jacoco-eq~~ | ~~`equipment-service`: покрытие 60/40 при порогах 75/80~~ ✅ закрыт (lines 80.2%, branches 88.1%) | — |
+| norming | Модуль `norming`: компилируется (сессия 1), но закомментирован в pom.xml. Нужно: NormingCommandConsumer, application.yml, state machine (NORMING -> POINT_OF_CONTROL + route + nextAuto=null), тесты, реальные справочники NormingProperties. То же для machining/forging | 8-16 ч (сессии 2+) |
 
 ### Грабли (не повторять)
 
@@ -1159,3 +1160,25 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Тесты: `AssemblyCycleIntegrationTest.assemblyProcessPlanning_routedToModule` (переписан), `TransitionHandlerTest.route_assemblyProcessPlanning_sendsDespitePointOfControl` (новый), `route_partProcessPlanning_sendsDespitePointOfControl` (восстановлен).
 - Предсуществующий баг `nextAuto_knownStates`: ожидания `EQUIPMENT_MATCHED`/`RECOMMENDATIONS_READY` противоречили `nextAuto() -> null` для развилки `EQUIPMENT_MATCHING` и внешнего `EQUIPMENT_GAP_RESOLUTION`; тест обновлён на `isNull()`.
 - `mvn -pl orchestrator -am verify` -> **BUILD SUCCESS**, 103/103, jacoco passed.
+
+### Обновление 2026-10-24 (norming: сессия 1 — компиляция достигнута)
+
+**Цель:** модуль `norming` из «3 файла, 51 ошибка» → компилируется. **Достигнуто:** `mvn compile` → BUILD SUCCESS.
+
+**Создано (15 файлов, коммит `cf902d2`):**
+- `model/` (7): `TimeNormSource` (enum), `StageTimeNorm`, `TimeNorm`, `MaterialInfo`, `MaterialConsumption`, `ToolConsumption`, `MaterialNorm` — Lombok `@Builder`/`@Getter`/`@Setter`.
+- `dto/` (4): `TimeNormRequest`, `TimeNormResponse`, `MaterialNormRequest`, `MaterialNormResponse` — по образцу вызовов в сервисах.
+- `repository/` (2): `TimeNormRepository`, `MaterialNormRepository` — `JpaRepository` + `findByProcessId`/`findByProjectId`.
+- `client/EquipmentClient` — пустой `@FeignClient` (методы не вызываются в коде).
+- `config/NormingProperties` — `@ConfigurationProperties`, **44 метода** с разумными значениями по умолчанию (реальные справочники — отдельная сессия).
+
+**Правки сервисов:**
+- `MaterialNormService`: вложенный `public static class MaterialInfo` вынесен в `model.MaterialInfo` (было дублирование типов, ломало `MaterialNorm.builder().material(...)`); `DRILLING_NOT_USED_PLACEHOLDER` → `MACHINING, CNC_MACHINING` (такой константы нет в `Stage.OperationType`).
+- `TimeNormService`: опечатка `BigDecimal totalTsh t` → `totalTshT`; в `calculateStage` разделены `Тшт.т` (= Тшт + Тпз/n, без коэффициента) и `Тшт.к` (= Тшт.т × коэффициент источника); в `StageTimeNorm` добавлено поле `tshT`; альтернативная трактовка `Тшт.т = Тшт` зафиксирована **комментарием в коде**.
+
+**Что НЕ сделано (сессии 2+):**
+- `norming` **всё ещё закомментирован** в корневом `pom.xml` — reactor его не видит, `mvn verify` не прогонялся.
+- Нет `NormingCommandConsumer` (по образцу `CastingCommandConsumer`) — RabbitMQ ещё не подключён.
+- State machine: `NORMING` пока `AUTOMATIC`; `nextAuto(NORMING) = NORMS_READY` проскакивает без модуля. Для реального нормирования нужно: `NORMING` → `POINT_OF_CONTROL` + `route()` (исключение) + `nextAuto = null` — но это **меняет текущий by-design auto-state**, обсуждать отдельно.
+- Нет `application.yml` (Rabbit, БД, Feign), нет Javadoc, нет тестов.
+- `NormingProperties` — с defaults; реальные справочники (нормы времени по операциям, коэффициенты по материалам) — отдельный проект с технологом.
