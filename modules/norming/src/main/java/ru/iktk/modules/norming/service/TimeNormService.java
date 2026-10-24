@@ -123,7 +123,7 @@ public class TimeNormService {
         // 2. Расчёт норм по каждой операции
         List<StageTimeNorm> stageNorms = new ArrayList<>();
         BigDecimal totalTpz = BigDecimal.ZERO;
-        BigDecimal totalTsh t = BigDecimal.ZERO;
+        BigDecimal totalTshT = BigDecimal.ZERO;
 
         for (Stage stage : process.getStages()) {
             StageTimeNorm stageNorm = calculateStage(stage, process, source, batchSize);
@@ -215,6 +215,15 @@ public class TimeNormService {
                 tpz.divide(batchSize, 4, RoundingMode.HALF_UP)
         ).setScale(3, RoundingMode.HALF_UP);
 
+        // Тшт.т - технически обоснованное штучно-калькуляционное (Тшт + Тпз/n),
+        //         без поправочного коэффициента источника норм.
+        // Тшт.к - нормативное штучно-калькуляционное = Тшт.т * коэффициент.
+        //
+        // Вариант (б) - альтернативная трактовка, НЕ используется:
+        //   Тшт.т = Тшт (технически обоснованное штучное, без Тпз),
+        //   Тшт.к = Тшт + Тпз/n. При необходимости - пересмотреть формулу.
+        BigDecimal tshT = tshK;
+
         // 9. Поправочный коэффициент для источника норм
         BigDecimal coefficient = properties.getCoefficient(source, stage);
         tshK = tshK.multiply(coefficient).setScale(3, RoundingMode.HALF_UP);
@@ -234,6 +243,7 @@ public class TimeNormService {
                 .tob(tob)
                 .totl(totl)
                 .tsh(tsh)
+                .tshT(tshT)
                 .tpz(tpz)
                 .tshK(tshK)
                 .source(source)

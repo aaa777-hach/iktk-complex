@@ -11,6 +11,7 @@ import ru.iktk.modules.norming.config.NormingProperties;
 import ru.iktk.modules.norming.dto.MaterialNormRequest;
 import ru.iktk.modules.norming.dto.MaterialNormResponse;
 import ru.iktk.modules.norming.model.MaterialConsumption;
+import ru.iktk.modules.norming.model.MaterialInfo;
 import ru.iktk.modules.norming.model.MaterialNorm;
 import ru.iktk.modules.norming.model.ToolConsumption;
 import ru.iktk.modules.norming.repository.MaterialNormRepository;
@@ -502,7 +503,7 @@ public class MaterialNormService {
 
     private boolean isToolConsuming(Stage.OperationType type) {
         return switch (type) {
-            case MACHINING, CNC_MACHINING, DRILLING_NOT_USED_PLACEHOLDER -> true;
+            case MACHINING, CNC_MACHINING -> true;
             case HOT_FORGING, COLD_FORGING, SHEET_STAMPING -> true;
             default -> false;
         };
@@ -582,36 +583,4 @@ public class MaterialNormService {
     }
 
     // ------------------------------------------------------------------
-    // Вспомогательные типы
-    // ------------------------------------------------------------------
-
-    /**
-     * Информация о материале.
-     */
-    public static class MaterialInfo {
-        private final String code;
-        private final String name;
-        private final String grade;
-        private final BigDecimal density;
-        private final String standard;
-        private final BigDecimal costPerKg;
-
-        public MaterialInfo(String code, String name, String grade,
-                            BigDecimal density, String standard,
-                            BigDecimal costPerKg) {
-            this.code = code;
-            this.name = name;
-            this.grade = grade;
-            this.density = density;
-            this.standard = standard;
-            this.costPerKg = costPerKg;
-        }
-
-        public String getCode() { return code; }
-        public String getName() { return name; }
-        public String getGrade() { return grade; }
-        public BigDecimal getDensity() { return density; }
-        public String getStandard() { return standard; }
-        public BigDecimal getCostPerKg() { return costPerKg; }
-    }
 }
