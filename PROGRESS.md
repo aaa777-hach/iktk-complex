@@ -1455,3 +1455,29 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Тесты `bom-service`/`integration`/`norming`** + Javadoc.
 - **Реальные справочники** `NormingProperties`.
 - **`integration`** — пока «1 геометрия = 1 деталь», нет многоуровневой сборки (для реального BOM из CAD).
+
+### Обновление 2026-10-25 (orchestrator: objectType=ASSEMBLY -> bom-service -> PART_PROCESS_PLANNING)
+
+**Цель:** полный smoke через orchestrator с `objectType=ASSEMBLY` — от `POST /projects` до `PART_PROCESS_PLANNING` через `bom-service` (без ручных `approve`). **Достигнуто:** автоматически.
+
+**Две правки `orchestrator` (коммит `1302c6f`, 2 files, 30 insertions, 4 deletions):**
+- `startProject`: `initialPayload` с `objectRef`, `objectType` (ASSEMBLY/PART), `assemblyId`. Раньше payload был пустой — `dispatchEvent` не мог узнать тип объекта.
+- `dispatchEvent`: спецслучай `GEOMETRY_ANALYSIS` + `objectType=ASSEMBLY` -> `IS_ASSEMBLY` (вместо `IS_PART`). `nextAuto(GEOMETRY_ANALYSIS)` по-прежнему `IS_PART` (default), но при `ASSEMBLY` переопределяется.
+- `TransitionHandler.nextAuto(ASSEMBLY_ANALYSIS)` -> `null` (было `BOM_EXTRACTED`). Ждём `BOM_EXTRACTED` от `bom-service`, а не проскакиваем в `PART_PROCESS_PLANNING`.
+
+**Проверено end-to-end (`projectId=a0f1e051-...`):**
+- `POST /projects` (`objectType=ASSEMBLY`) -> **`ASSEMBLY_ANALYSIS`** (`availableEvents=[]`, `pointOfControl=false`), не `PART_PROCESS_PLANNING`.
+- `route(ASSEMBLY_ANALYSIS)` -> `iktk.command.bom-service` -> `BomCommandConsumer` -> `geometryId=null` -> `IntegrationController` default `geo-12345` -> `BomService.analyze`.
+- `BOM_EXTRACTED` -> `PART_PROCESS_PLANNING` **автоматически** (без `approve`).
+- **БД `iktk_bom`:**
+  - `assembly_units`: `project_id=a0f1e051-...`, `designation=ASSY-a0f1e051-...`, `item_count=1`.
+  - `bom_items`: `designation=geo-12345`, `material=Steel 20Kh`, `item_type=PART`.
+
+**Тесты:** `mvn -pl orchestrator test` -> **103/103**, `mvn -pl orchestrator -am verify` -> **BUILD SUCCESS**, jacoco passed.
+
+**Что осталось:**
+- **`casting`** — не проверен (переход `PART_PROCESS_PLANNING -> casting`). Сейчас `PART_PROCESS_PLANNING` — точка контроля, обходится `approve`.
+- **`machining`/`forging`** — по образцу `norming`.
+- **Тесты `bom-service`/`integration`/`norming`** + Javadoc.
+- **`integration`** — «1 геометрия = 1 деталь», нет многоуровневой сборки.
+- **Реальные справочники `NormingProperties`.
