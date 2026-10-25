@@ -1121,6 +1121,7 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 13. **`mvn verify` в `equipment-service` падает на `jacoco:check`** (60/40 vs 75/80) — предсуществующая проблема, не связана с правками документации. При работе с этим сервисом — либо добавлять тесты, либо временно `-Djacoco.skip=true` для проверки кода, либо чинить техдолг `jacoco-eq`.
 14. **Java-код нельзя вставлять в PowerShell.** Символы `@DisplayName`, `void`, `verify(...)`, `&&` — синтаксис Java; PowerShell ругается `ParserError`/`UnexpectedToken`, и это **не** ошибка файла. Java-код правится через `code`, либо автоматической заменой строк по шаблону (ReadAllLines -> цикл -> WriteAllLines + UTF8Encoding $false). В PowerShell вставляй только команды.
 15. **`git commit -m "русский текст"` из PowerShell 5.1 может испортить сообщение коммита** (двойное перекодирование UTF-8 → CP1251 → UTF-8: `—` превращается в `–≤–ВвАЭ`). При этом `git log` без `[Console]::OutputEncoding = UTF8` показывает кракозябры **и для корректных** коммитов (грабли №11) — легко перепутать. Решение: для длинных/русских сообщений писать в UTF-8-файл (`[System.IO.File]::WriteAllLines($path, $msg, (New-Object System.Text.UTF8Encoding $false))`) и делать `git commit -F commit-msg.txt`. Проверка: `[Console]::OutputEncoding = UTF8; git log -1 --format="%B"`.
+16. **`application.yml` в корне модуля перекрывает `src/main/resources/application.yml`.** `spring-boot:run` читает `./application.yml` (рабочая папка = корень модуля) раньше, чем classpath. Встретилось дважды: `assembly` (сессия 4) и `casting` (сессия 8). В обоих случаях старый файл в корне содержал неверный URL/порт. Решение: удалить/переименовать `application.yml` в корне модуля, оставить только `src/main/resources/application.yml`. Проверка: `Get-ChildItem modules,services -Directory | % { if (Test-Path (Join-Path $_.FullName "application.yml")) { $_ } }` — не должно быть вывода.
 
 ### Правило на будущее
 В конце каждой сессии: `mvn verify` → `EXIT: 0` → коммит кода → дописать в `PROGRESS.md` раздел `## 📌 СЕССИЯ <дата>` (5–10 строк) → `git commit -m "docs: PROGRESS.md — сессия <дата>"`.
@@ -1481,3 +1482,31 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Тесты `bom-service`/`integration`/`norming`** + Javadoc.
 - **`integration`** — «1 геометрия = 1 деталь», нет многоуровневой сборки.
 - **Реальные справочники `NormingProperties`.
+
+### Обновление 2026-10-25 (casting: PART_PROCESS_PLANNING -> TOOLING_DESIGN автоматически)
+
+**Цель:** `PART_PROCESS_PLANNING → casting → PART_PROCESS_READY → TOOLING_DESIGN` автоматически (без `approve`). **Достигнуто.**
+
+**Две правки:**
+- **orchestrator** (`TransitionHandler.nextAuto`): `PART_PROCESS_PLANNING` -> `null` (было `PART_PROCESS_READY`). Ждём `PART_PROCESS_READY` от `casting`, не проскакиваем в `TOOLING_DESIGN`.
+- **casting**: `application.yml` — добавлен `spring.datasource` (БД `iktk_casting`), `spring.jpa`, `spring.flyway`, `iktk.integration.url = http://localhost:8092`, `iktk.equipment.url = http://localhost:8094`, `demo-fallback: true`.
+- **casting**: старый `modules/casting/application.yml` (в **корне модуля**, с `integration.url = http://localhost:8095`) переименован в `.bak`.
+
+**Причина бага (важно):** `spring-boot:run` читает `./application.yml` (рабочая папка = `modules/casting`) **раньше**, чем `src/main/resources/application.yml`. В корне лежал старый файл с `8095` (порт `norming`), из-за чего `casting` звонил в `norming`, получал 404. Тот же паттерн был с `assembly` (сессия 4).
+
+**Проверено end-to-end (`projectId=498cb396-...`):**
+1. `POST /projects` (`objectType=ASSEMBLY`, `geometryId=geo-12345`) -> `ASSEMBLY_ANALYSIS`.
+2. `bom-service` (асинхронно) -> `BOM_EXTRACTED` -> `PART_PROCESS_PLANNING`.
+3. `run()` -> `route()` -> `casting` -> `CastingCommandConsumer` -> `designProcess` (`objectRef=geo-12345`, через `integration:8092`) -> `INVESTMENT_CASTING`, `stages=6` -> `PART_PROCESS_READY` -> **`TOOLING_DESIGN`**.
+
+**Ключевое:** `objectRef=geo-12345` **дошёл до casting** через `payload propagation` (сессия 5) + `startProject initialPayload` (сессия 7). Это доказывает, что цепочка передачи данных работает на всём пути.
+
+**Коммиты:**
+- `81b7061` — `fix(orchestrator): nextAuto(PART_PROCESS_PLANNING)=null`.
+- `5869af3` — `fix(casting): datasource + integration.url=8092, старый application.yml в корне -> .bak`.
+
+**Что осталось:**
+- `machining`/`forging` — по образцу `norming`/`casting`.
+- Полный smoke до `COMPLETED` (`TOOLING_DESIGN → … → TECHNICAL_CONTROL`).
+- Тесты `bom-service`/`integration`/`norming`/`casting` + Javadoc.
+- Реальные справочники `NormingProperties`.
