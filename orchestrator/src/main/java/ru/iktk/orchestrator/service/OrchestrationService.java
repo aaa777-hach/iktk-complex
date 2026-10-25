@@ -22,6 +22,7 @@ import ru.iktk.orchestrator.statemachine.TransitionHandler;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -256,6 +257,20 @@ public class OrchestrationService {
         }
 
         ProjectState newState = sm.getState().getId();
+        // Мерж payload в runtime: артефакты от модулей (processId, bomRef
+        // и т.п.) должны доходить до следующего route(). run() берёт payload
+        // из runtime.getPayload() — без этого шага он был бы null.
+        if (payload != null && !payload.isEmpty()) {
+            ProjectRuntime rt = loadRuntime(projectId);
+            Map<String, Object> merged = new HashMap<>();
+            if (rt.getPayload() != null) {
+                merged.putAll(rt.getPayload());
+            }
+            merged.putAll(payload);
+            rt.setPayload(merged);
+            projectStateRepository.save(rt);
+        }
+
         persistState(projectId, sm, newState);
 
 
