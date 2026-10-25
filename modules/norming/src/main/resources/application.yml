@@ -32,6 +32,8 @@ iktk:
   clients:
     equipment:
       url: ${EQUIPMENT_URL:http://localhost:8094}
+    assembly:
+      url: ${ASSEMBLY_URL:http://localhost:8097}
 
 server:
   port: 8095

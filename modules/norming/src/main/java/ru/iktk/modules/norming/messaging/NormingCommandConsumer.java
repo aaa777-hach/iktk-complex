@@ -12,18 +12,22 @@ import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 import ru.iktk.core.domain.Stage;
 import ru.iktk.core.domain.TechnologyProcess;
+import ru.iktk.modules.norming.client.AssemblyProcessClient;
+import ru.iktk.modules.norming.client.dto.AssemblyProcessDto;
+import ru.iktk.modules.norming.client.dto.AssemblyStageDto;
 import ru.iktk.modules.norming.dto.MaterialNormRequest;
 import ru.iktk.modules.norming.dto.MaterialNormResponse;
 import ru.iktk.modules.norming.dto.TimeNormRequest;
 import ru.iktk.modules.norming.dto.TimeNormResponse;
 import ru.iktk.modules.norming.model.TimeNormSource;
 import ru.iktk.modules.norming.service.MaterialNormService;
+import ru.iktk.modules.norming.service.TechProcessMapper;
 import ru.iktk.modules.norming.service.TimeNormService;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,9 +36,12 @@ import java.util.Map;
  * <p>Слушает {@code iktk.norming.queue}. По команде:
  * <ol>
  *   <li>Разбирает JSON (projectId, payload.processId).</li>
- *   <li>Строит {@link TechnologyProcess} (DEMO, пока нет интеграции с assembly).</li>
- *   <li>Вызывает {@link TimeNormService#calculate(TimeNormRequest)} и
- *       {@link MaterialNormService#calculate(MaterialNormRequest)}.</li>
+ *   <li>Если {@code processId} передан — грузит реальный ТП через
+ *       {@link AssemblyProcessClient} (assembly-process-service) и маппит в
+ *       {@link TechnologyProcess} через {@link TechProcessMapper}.</li>
+ *   <li>Если {@code processId} нет или assembly недоступен — fallback на demo-ТП
+ *       (одна операция MACHINING) для отладки.</li>
+ *   <li>Вызывает {@link TimeNormService#calculate} и {@link MaterialNormService#calculate}.</li>
  *   <li>Публикует результат в {@code iktk.results} с ключом
  *       {@code iktk.result.norming} и событием {@code NORMS_READY}.</li>
  * </ol>
@@ -51,15 +58,21 @@ public class NormingCommandConsumer {
 
     private final TimeNormService timeNormService;
     private final MaterialNormService materialNormService;
+    private final AssemblyProcessClient assemblyProcessClient;
+    private final TechProcessMapper techProcessMapper;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
 
     public NormingCommandConsumer(TimeNormService timeNormService,
                                   MaterialNormService materialNormService,
+                                  AssemblyProcessClient assemblyProcessClient,
+                                  TechProcessMapper techProcessMapper,
                                   RabbitTemplate rabbitTemplate,
                                   ObjectMapper objectMapper) {
         this.timeNormService = timeNormService;
         this.materialNormService = materialNormService;
+        this.assemblyProcessClient = assemblyProcessClient;
+        this.techProcessMapper = techProcessMapper;
         this.rabbitTemplate = rabbitTemplate;
         this.objectMapper = objectMapper;
     }
@@ -84,7 +97,7 @@ public class NormingCommandConsumer {
             log.info("NormingCommandConsumer: processing projectId={}, processId={}",
                     projectId, processId);
 
-            TechnologyProcess process = buildDemoProcess(projectId, processId);
+            TechnologyProcess process = resolveProcess(projectId, processId);
 
             TimeNormRequest timeReq = TimeNormRequest.builder()
                     .projectId(projectId)
@@ -119,6 +132,29 @@ public class NormingCommandConsumer {
         }
     }
 
+    /**
+     * Получить ТП: реальный из assembly (если processId есть и сервис доступен)
+     * или demo (fallback).
+     */
+    private TechnologyProcess resolveProcess(String projectId, String processId) {
+        if (processId == null) {
+            log.info("NormingCommandConsumer: processId not provided -> demo TP");
+            return buildDemoProcess(projectId, null);
+        }
+        try {
+            AssemblyProcessDto ap = assemblyProcessClient.getProcess(processId);
+            List<AssemblyStageDto> stages = assemblyProcessClient.getStages(processId);
+            TechnologyProcess tp = techProcessMapper.toTechnologyProcess(ap, stages);
+            log.info("NormingCommandConsumer: loaded real TP from assembly, processId={}, stages={}",
+                    processId, tp.getStages() != null ? tp.getStages().size() : 0);
+            return tp;
+        } catch (Exception ex) {
+            log.warn("NormingCommandConsumer: assembly unavailable ({}), fallback to demo TP",
+                    ex.getMessage());
+            return buildDemoProcess(projectId, processId);
+        }
+    }
+
     private TechnologyProcess buildDemoProcess(String projectId, String processId) {
         String tpId = (processId != null) ? processId : "demo-process-" + projectId;
         TechnologyProcess process = new TechnologyProcess(
@@ -143,7 +179,7 @@ public class NormingCommandConsumer {
         stage.setTimeNormMin(BigDecimal.valueOf(10));
         stage.setSetupTimeMin(BigDecimal.valueOf(20));
 
-        process.setStages(new ArrayList<>(java.util.List.of(stage)));
+        process.setStages(new ArrayList<>(List.of(stage)));
         return process;
     }
 
