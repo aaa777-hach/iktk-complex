@@ -1380,3 +1380,10 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - `equipment-service` — 8094.
 - `casting` — не запущен (нет consumer на `iktk.casting.queue`), для smoke не потребовался (нет перехода в `casting` в этом сценарии).
 - RabbitMQ, PostgreSQL, Redis, MinIO — docker.
+
+**Важные детали сессии (для будущих smoke):**
+- **Orchestrator перезапущен**: старый PID 2260 (от 23.10.2026) не содержал фиксов `route()` для `NORMING`/`ASSEMBLY_PROCESS_PLANNING` — smoke бы не прошёл. Убит, запущен новый (PID 9288).
+- **Assembly перезапущен**: старый PID 8644 держал порт 8097, лог обрывался на `13:04` (после ручного `designProcess`). Убит, запущен новый (PID 9668).
+- **Грабли (поиск java-процессов):** `Get-CimInstance Win32_Process | Where CommandLine -match "assembly-process-service"` находит **mvn-родителя**, но **не java-процесс** (у него `-cp @argfile`, без имени модуля). Искать по **порту** (`Get-NetTCPConnection -LocalPort 8097`), а не по `CommandLine`.
+- **`run-norming.log` — старые записи** (PID 19960, `10:43`). Новый `norming` (PID 10904) пишет в **своё окно**, не в файл. При следующем запуске — `Tee-Object` для лога.
+- **`casting` не проверен** в полном цикле: на `PART_PROCESS_PLANNING` сделан `approve` (ручное подтверждение), а не `run` → `casting`. Для проверки ветки `casting` — отдельный smoke (сессия 5+).
