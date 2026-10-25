@@ -72,15 +72,15 @@ class AssemblyCycleIntegrationTest {
     }
 
     @Test
-    @DisplayName("ASSEMBLY_PROCESS_READY от модуля -> каскад до TECHNICAL_CONTROL")
-    void assemblyProcessReady_cascadesToTechnicalControl() {
+    @DisplayName("ASSEMBLY_PROCESS_READY от модуля -> каскад до NORMING (точка контроля)")
+    void assemblyProcessReady_cascadesToNorming() {
         String projectId = createRuntime(ProjectState.ASSEMBLY_PROCESS_PLANNING);
 
         orchestrationService.onModuleResult(
                 projectId, ProjectEvent.ASSEMBLY_PROCESS_READY, Map.of(), true);
 
         assertThat(orchestrationService.getState(projectId))
-                .isEqualTo(ProjectState.TECHNICAL_CONTROL);
+                .isEqualTo(ProjectState.NORMING);
     }
 
     @Test

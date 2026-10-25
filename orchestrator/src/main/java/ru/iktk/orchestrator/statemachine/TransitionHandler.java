@@ -100,7 +100,8 @@ public class TransitionHandler {
 
         if (state.isPointOfControl()
                 && state != ProjectState.PART_PROCESS_PLANNING
-                && state != ProjectState.ASSEMBLY_PROCESS_PLANNING) {
+                && state != ProjectState.ASSEMBLY_PROCESS_PLANNING
+                && state != ProjectState.NORMING) {
             log.info("route: projectId={}, state={} — точка контроля, ожидается решение пользователя",
                     projectId, state);
             decisionLogService.log(projectId, "AWAITING_DECISION",
@@ -131,7 +132,7 @@ public class TransitionHandler {
             case ASSEMBLY_ANALYSIS     -> ProjectEvent.BOM_EXTRACTED;
             case EQUIPMENT_MATCHING    -> null; // wait for external EQUIPMENT_GAP (techdebt: equipment-service consumer)
             case EQUIPMENT_GAP_RESOLUTION -> null; // wait for external RECOMMENDATIONS_READY from recommendation-service
-            case NORMING               -> ProjectEvent.NORMS_READY;
+            case NORMING               -> null; // wait for external NORMS_READY from norming-module
             case DOCUMENTATION         -> ProjectEvent.DOCUMENTATION_READY;
             default -> null;
         };
@@ -147,6 +148,7 @@ public class TransitionHandler {
             case TOOLING_DESIGN            -> ProjectEvent.TOOLING_READY;
             case RECOMMENDATION_REVIEW     -> ProjectEvent.RECOMMENDATION_ACCEPTED;
             case ASSEMBLY_PROCESS_PLANNING -> ProjectEvent.ASSEMBLY_PROCESS_READY;
+            case NORMING                   -> ProjectEvent.NORMS_READY;
             case TECHNICAL_CONTROL         -> ProjectEvent.CONTROL_PASSED;
             default -> nextAuto(state);
         };

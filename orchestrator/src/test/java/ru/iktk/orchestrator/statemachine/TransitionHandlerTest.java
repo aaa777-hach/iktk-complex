@@ -51,7 +51,7 @@ class TransitionHandlerTest {
         assertThat(handler.nextAuto(ProjectState.ASSEMBLY_ANALYSIS)).isEqualTo(ProjectEvent.BOM_EXTRACTED);
         assertThat(handler.nextAuto(ProjectState.EQUIPMENT_MATCHING)).isNull();
         assertThat(handler.nextAuto(ProjectState.EQUIPMENT_GAP_RESOLUTION)).isNull();
-        assertThat(handler.nextAuto(ProjectState.NORMING)).isEqualTo(ProjectEvent.NORMS_READY);
+        assertThat(handler.nextAuto(ProjectState.NORMING)).isNull(); // точка контроля, ждём модуль
         assertThat(handler.nextAuto(ProjectState.DOCUMENTATION)).isEqualTo(ProjectEvent.DOCUMENTATION_READY);
     }
 

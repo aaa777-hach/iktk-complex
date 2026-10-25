@@ -56,7 +56,7 @@ class ProjectStateTest {
     @DisplayName("getCategory: известные значения")
     void getCategory_knownValues() {
         assertThat(ProjectState.PROJECT_INIT.getCategory()).isEqualTo(ProjectState.Category.AUTOMATIC);
-        assertThat(ProjectState.NORMING.getCategory()).isEqualTo(ProjectState.Category.AUTOMATIC);
+        assertThat(ProjectState.NORMING.getCategory()).isEqualTo(ProjectState.Category.POINT_OF_CONTROL);
         assertThat(ProjectState.PART_PROCESS_PLANNING.getCategory()).isEqualTo(ProjectState.Category.POINT_OF_CONTROL);
         assertThat(ProjectState.TECHNICAL_CONTROL.getCategory()).isEqualTo(ProjectState.Category.POINT_OF_CONTROL);
         assertThat(ProjectState.COMPLETED.getCategory()).isEqualTo(ProjectState.Category.TERMINAL);
@@ -73,15 +73,16 @@ class ProjectStateTest {
     }
 
     @Test
-    @DisplayName("pointsOfControl: ровно 5 состояний, каждое isPointOfControl()")
+    @DisplayName("pointsOfControl: ровно 6 состояний, каждое isPointOfControl()")
     void pointsOfControl_returnsOnlyPointOfControlStates() {
         Set<ProjectState> poc = ProjectState.pointsOfControl();
-        assertThat(poc).hasSize(5);
+        assertThat(poc).hasSize(6);
         assertThat(poc).containsExactlyInAnyOrder(
                 ProjectState.PART_PROCESS_PLANNING,
                 ProjectState.TOOLING_DESIGN,
                 ProjectState.RECOMMENDATION_REVIEW,
                 ProjectState.ASSEMBLY_PROCESS_PLANNING,
+                ProjectState.NORMING,
                 ProjectState.TECHNICAL_CONTROL);
         for (ProjectState s : poc) {
             assertThat(s.isPointOfControl()).as("state=%s", s).isTrue();
@@ -92,7 +93,7 @@ class ProjectStateTest {
     @DisplayName("automaticStates: ровно 8 состояний, каждое isAutomatic()")
     void automaticStates_returnsOnlyAutomaticStates() {
         Set<ProjectState> auto = ProjectState.automaticStates();
-        assertThat(auto).hasSize(8);
+        assertThat(auto).hasSize(7);
         for (ProjectState s : auto) {
             assertThat(s.isAutomatic()).as("state=%s", s).isTrue();
         }

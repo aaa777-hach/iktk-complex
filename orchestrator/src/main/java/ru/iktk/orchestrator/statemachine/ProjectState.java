@@ -95,7 +95,7 @@ public enum ProjectState {
     ASSEMBLY_PROCESS_PLANNING("Проектирование ТП сборки", Category.POINT_OF_CONTROL),
 
     /** Расчёт норм времени и расхода материалов. */
-    NORMING("Нормирование", Category.AUTOMATIC),
+    NORMING("Нормирование (точка контроля)", Category.POINT_OF_CONTROL),
 
     /** Формирование комплекта технологической документации. */
     DOCUMENTATION("Формирование документации", Category.AUTOMATIC),
@@ -172,6 +172,7 @@ public enum ProjectState {
                 TOOLING_DESIGN,
                 RECOMMENDATION_REVIEW,
                 ASSEMBLY_PROCESS_PLANNING,
+                NORMING,
                 TECHNICAL_CONTROL
         );
     }
@@ -185,7 +186,6 @@ public enum ProjectState {
                 ASSEMBLY_ANALYSIS,
                 EQUIPMENT_MATCHING,
                 EQUIPMENT_GAP_RESOLUTION,
-                NORMING,
                 DOCUMENTATION
         );
     }
