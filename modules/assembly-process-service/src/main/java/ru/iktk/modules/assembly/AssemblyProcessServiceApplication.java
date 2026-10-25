@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication(scanBasePackages = {
         "ru.iktk.modules.assembly",
-        "ru.iktk.shared"
+        "ru.iktk.core"
 })
 @EnableFeignClients(basePackages = "ru.iktk.modules.assembly.client")
 @EnableScheduling

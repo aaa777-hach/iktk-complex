@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: assembly-process-service
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:iktk}
+    password: ${RABBITMQ_PASSWORD:iktk_dev_password}
+    virtual-host: ${RABBITMQ_VHOST:/iktk}
+    listener:
+      simple:
+        missing-queues-fatal: false
+  datasource:
+    url: ${ASSEMBLY_DB_URL:jdbc:postgresql://localhost:5432/iktk_assembly}
+    username: ${ASSEMBLY_DB_USER:iktk_app}
+    password: ${ASSEMBLY_DB_PASSWORD:iktk_dev_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+iktk:
+  assembly:
+    demo-fallback: false
+    default-strategy: SEQUENTIAL
+  equipment:
+    url: ${EQUIPMENT_URL:http://localhost:8094}
+  integration:
+    url: ${INTEGRATION_URL:http://localhost:8095}
+  messaging:
+    commands-exchange: iktk.commands
+    routing-prefix: iktk.command
+    commands-queue: iktk.assembly-process-service.queue
+    results-exchange: iktk.results
+    results-queue: iktk.orchestrator.results.queue
+
+server:
+  port: 8097
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
