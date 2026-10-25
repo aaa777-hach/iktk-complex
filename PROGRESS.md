@@ -1261,3 +1261,52 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - State machine: `NORMING` пока `AUTOMATIC` — оркестратор не ждёт `norming`.
 - Тесты `norming`, Javadoc, реальные справочники `NormingProperties`.
 - `machining`/`forging` — в том же состоянии, что был `norming` (компиляция + RabbitMQ).
+
+### Обновление 2026-10-25 (norming: маппинг operationType + ACTUAL-режим)
+
+**Цель:** правильный маппинг `operationType` assembly -> `Stage.OperationType` + корректный расчёт по реальным нормам. **Достигнуто:** `totalTsh=150`, `totalTshK=151.5` (было `93.625` / `251.45`).
+
+**Правило (согласовано с Анатолием):**
+- Применять рекомендованный расчёт, **обязательно с комментариями** — какой параметр и по какой формуле.
+- Позже корректируем на конкретных примерах.
+
+**Маппинг `operationType` (assembly -> Stage.OperationType):**
+- `PREPARATION` -> `BLANK_PREPARATION`
+- `BASIC_ASSEMBLY`, `NODE_ASSEMBLY`, `GENERAL_ASSEMBLY` -> `ASSEMBLY`
+- `CONTROL` -> `TECHNICAL_CONTROL`
+- Плюс прямые соответствия (`CASTING`, `MACHINING`, `ASSEMBLY`, `TECHNICAL_CONTROL`, …) — на случай, если assembly начнёт отдавать их напрямую.
+- Таблица в `TechProcessMapper.OPERATION_TYPE_MAP`; fallback — `AUXILIARY` с WARN.
+
+**`timeNormMin` / `setupTimeMin` по `source` (вариант «в», гибрид):**
+- `source=ACTUAL` (реальный ТП из assembly):
+  - `To = timeNormMin` (готовая норма assembly);
+  - `Tpz = setupTimeMin` (готовая норма assembly);
+  - `Tv = Tob = Totl = 0` — **assembly уже включает полную норму** (`assembly.totalTimeMin = Σ timeNormMin + Σ setupTimeMin`), повторный счёт = двойной.
+  - `Tsh = To`, `Tsh.t = To + Tpz/n`, `Tsh.k = Tsh.t × k_source` (для ACTUAL `k=1.0`).
+- `source=CALCULATED/PLANT/INDUSTRY/GENERAL` (demo-ТП, fallback): полная цепочка по формулам `TimeNormService` (`Tv`, `Tob`, `Totl` — по `NormingProperties`).
+
+**`NormingCommandConsumer`:** `processSource` = `ACTUAL` если `processId` реальный (не demo), иначе `CALCULATED`.
+
+**Проверка на трёх версиях (`processId=1b959c6f-...`, 5 операций):**
+| Проект | Логика | total_tsh | total_tsh_t | total_tsh_k |
+|---|---|---|---|---|
+| `demo-real-tp-1` | все `AUXILIARY` (fallback) | 93.625 | 103.625 | 119.170 |
+| `demo-real-tp-2` | маппинг ок, но `Tv=85` (двойной счёт) | 251.45 | 252.95 | 252.95 |
+| `demo-real-tp-3` | маппинг + `Tv=0` для ACTUAL | **150.0** | **151.5** | **151.5** |
+
+**Формулы (с комментариями в коде `TimeNormService.calculateStage`):**
+- `To` — основное (машинное) время.
+- `Tv` — вспомогательное (установка + обработка + контроль).
+- `Top = To + Tv` — оперативное.
+- `Tob = Top × %обсл/100` — обслуживание рабочего места.
+- `Totl = Top × %отдых/100` — отдых и личные надобности.
+- `Tsh = Top + Tob + Totl` — штучное.
+- `Tpz` — подготовительно-заключительное.
+- `Tsh.t = Tsh + Tpz/n` — технически обоснованное штучно-калькуляционное (без коэффициента).
+- `Tsh.k = Tsh.t × k_source` — нормативное штучно-калькуляционное.
+
+**Осталось:**
+- State machine: `NORMING` пока `AUTOMATIC` — оркестратор не ждёт `norming`.
+- Тесты `norming`, Javadoc.
+- Реальные справочники `NormingProperties` (сейчас defaults).
+- `machining`/`forging` — в том же состоянии, что был `norming`.
