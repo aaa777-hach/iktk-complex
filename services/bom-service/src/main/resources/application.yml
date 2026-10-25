@@ -1,5 +1,5 @@
 server:
-  port: 8097
+  port: 8091
 
 spring:
   application:
@@ -40,7 +40,7 @@ iktk:
     max-depth: 20
     retry-count: 3
     cad-systems: [SIEMENS, DASSAULT, T_FLEX, KOMPAS]
-    integration-url: http://localhost:8095
+    integration-url: http://localhost:8092
     demo-fallback: false
     default-strategy: SEQUENTIAL
   messaging:
@@ -49,4 +49,4 @@ iktk:
   equipment:
     url: http://localhost:8094
   integration:
-    url: http://localhost:8095
+    url: http://localhost:8092

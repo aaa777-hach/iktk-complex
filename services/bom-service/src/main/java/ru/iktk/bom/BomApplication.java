@@ -80,8 +80,7 @@ import java.net.UnknownHostException;
 })
 @EnableJpaRepositories(basePackages = "ru.iktk.bom.repository")
 @EntityScan(basePackages = {
-        "ru.iktk.bom.model",
-        "ru.iktk.core.domain"
+        "ru.iktk.bom.model"
 })
 @EnableAsync
 @EnableScheduling

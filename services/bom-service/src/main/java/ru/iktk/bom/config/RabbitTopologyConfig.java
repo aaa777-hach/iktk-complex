@@ -1,0 +1,45 @@
+package ru.iktk.bom.config;
+
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.ExchangeBuilder;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.amqp.core.TopicExchange;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * RabbitMQ-топология для bom-service:
+ * очередь iktk.bom-service.queue + binding по iktk.command.bom-service.
+ */
+@Configuration
+public class RabbitTopologyConfig {
+
+    @Value("${iktk.messaging.commands-exchange:iktk.commands}")
+    private String commandsExchange;
+
+    @Value("${iktk.messaging.routing-prefix:iktk.command}")
+    private String routingPrefix;
+
+    @Value("${iktk.messaging.commands-queue:iktk.bom-service.queue}")
+    private String commandsQueue;
+
+    @Bean
+    public TopicExchange commandsExchange() {
+        return ExchangeBuilder.topicExchange(commandsExchange).durable(true).build();
+    }
+
+    @Bean
+    public Queue bomCommandsQueue() {
+        return QueueBuilder.durable(commandsQueue).build();
+    }
+
+    @Bean
+    public Binding bomCommandsBinding(Queue bomCommandsQueue, TopicExchange commandsExchange) {
+        return BindingBuilder.bind(bomCommandsQueue)
+                .to(commandsExchange)
+                .with(routingPrefix + ".bom-service");
+    }
+}

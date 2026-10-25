@@ -1,25 +1,21 @@
 server:
-  port: 8095
+  port: ${SERVER_PORT:8092}
 
 spring:
   application:
     name: integration
-
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/iktk_geometry
-    username: ${POSTGRES_USER:iktk_app}
-    password: ${POSTGRES_PASSWORD:iktk_dev_password}
+    url: ${GEOMETRY_DB_URL:jdbc:postgresql://localhost:5432/iktk_geometry}
+    username: ${GEOMETRY_DB_USER:iktk_app}
+    password: ${GEOMETRY_DB_PASSWORD:iktk_dev_password}
     driver-class-name: org.postgresql.Driver
-
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: false
+    open-in-view: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-    open-in-view: false
-
   flyway:
     enabled: true
     baseline-on-migrate: true
@@ -34,4 +30,5 @@ management:
 
 logging:
   level:
-    ru.iktk.modules.integration: INFO
+    root: INFO
+    ru.iktk: INFO
