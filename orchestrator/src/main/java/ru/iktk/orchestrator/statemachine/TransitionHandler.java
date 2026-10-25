@@ -144,7 +144,7 @@ public class TransitionHandler {
      */
     public ProjectEvent nextOnApprove(ProjectState state) {
         return switch (state) {
-            case PART_PROCESS_PLANNING     -> ProjectEvent.PART_PROCESS_READY;
+            case PART_PROCESS_PLANNING     -> null; // wait for external PART_PROCESS_READY from casting
             case TOOLING_DESIGN            -> ProjectEvent.TOOLING_READY;
             case RECOMMENDATION_REVIEW     -> ProjectEvent.RECOMMENDATION_ACCEPTED;
             case ASSEMBLY_PROCESS_PLANNING -> ProjectEvent.ASSEMBLY_PROCESS_READY;
