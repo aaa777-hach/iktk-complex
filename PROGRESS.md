@@ -1310,3 +1310,37 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Тесты `norming`, Javadoc.
 - Реальные справочники `NormingProperties` (сейчас defaults).
 - `machining`/`forging` — в том же состоянии, что был `norming`.
+
+### Обновление 2026-10-25 (orchestrator: NORMING -> POINT_OF_CONTROL, оркестратор ждёт norming)
+
+**Цель:** закрыть последний архитектурный обрыв — оркестратор **проскакивал** `NORMING` (auto `NORMS_READY` уходил раньше, чем `norming` реально считал). **Достигнуто:** оркестратор **ждёт** `NORMS_READY` от `norming`-модуля.
+
+**Правки (5 файлов, коммит `a3cd7fe`):**
+- `ProjectState.java`: `NORMING` — `AUTOMATIC` -> `POINT_OF_CONTROL`; `pointsOfControl() +NORMING`, `automaticStates() -NORMING`.
+- `TransitionHandler.java`:
+  - `nextAuto(NORMING)` -> `null` (ждём внешнего `NORMS_READY`);
+  - `nextOnApprove(NORMING)` -> `NORMS_READY` (ручное «нормы приняты»);
+  - `route()` — добавлено исключение для `NORMING` (по образцу `PART_PROCESS_PLANNING`, `ASSEMBLY_PROCESS_PLANNING`) — команда уходит в `norming`.
+- `StateMachineConfig` — переход `NORMING -> DOCUMENTATION` по `NORMS_READY` **уже был**, не меняли.
+
+**Поведение после правки** (симметрично `ASSEMBLY_PROCESS_PLANNING`):
+- Вход в `NORMING` -> `route()` **не шлёт** команду (точка контроля, `AWAITING_DECISION`).
+- `POST /run` -> `route()` -> команда в `iktk.norming.queue` -> `norming` считает -> `NORMS_READY` -> `DOCUMENTATION` (auto).
+- **Или** `approve()` -> `NORMS_READY` -> `DOCUMENTATION` (ручное «нормы приняты», модуль не вызывается).
+
+**Тесты (5 падений обновлены под новое поведение):**
+- `TransitionHandlerTest:54`: `nextAuto(NORMING)` -> `isNull()` (было `isEqualTo(NORMS_READY)`).
+- `ProjectStateTest:59`: `NORMING.getCategory() = POINT_OF_CONTROL` (было `AUTOMATIC`).
+- `ProjectStateTest:76`: `@DisplayName("... 6 состояний ...")` (было 5).
+- `ProjectStateTest:79`: `pointsOfControl().hasSize(6)` (было 5).
+- `ProjectStateTest:85`: `containsExactlyInAnyOrder(... +NORMING)` (было без NORMING).
+- `ProjectStateTest:95`: `automaticStates().hasSize(7)` (было 8).
+- `AssemblyCycleIntegrationTest`: `assemblyProcessReady_cascadesToNorming` (было `cascadesToTechnicalControl`) — теперь каскад останавливается на `NORMING`.
+
+**Результат:** `mvn -pl orchestrator -am verify` -> **BUILD SUCCESS**, **103/103**, jacoco passed.
+
+**Осталось:**
+- `machining`/`forging` — по образцу `norming` (компиляция + RabbitMQ).
+- Тесты `norming`, Javadoc.
+- Реальные справочники `NormingProperties`.
+- **Smoke полного цикла** (orchestrator + casting + assembly + equipment + recommendation + norming) — увидеть всю цепочку вживую.
