@@ -1102,7 +1102,7 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 | 4b | Повторная публикация `RECOMMENDATIONS_READY` при идемпотентном повторе | by design, оставить |
 | Javadoc | Кракозябры в комментариях `EquipmentRecommendation`, `EquipmentGapAnalysis`, `EquipmentRequirement` | 30 мин, косметика |
 | ~~jacoco-eq~~ | ~~`equipment-service`: покрытие 60/40 при порогах 75/80~~ ✅ закрыт (lines 80.2%, branches 88.1%) | — |
-| norming | Модуль `norming`: **сессия 1** — компилируется; **сессия 2** — RabbitMQ + PostgreSQL + consumer + Flyway, end-to-end работает (`NORMS_READY` в results). Осталось: (а) реальный ТП через Feign из assembly (маппинг `AssemblyProcess → TechnologyProcess`); (б) state machine `NORMING` → `POINT_OF_CONTROL` + route + nextAuto=null (меняет by-design auto-state — обсуждать); (в) тесты + Javadoc; (г) реальные справочники `NormingProperties`. То же для machining/forging (компиляция) | 6-12 ч (сессии 3+) |
+| norming | **Сессия 1**: компилируется. **Сессия 2**: RabbitMQ + PostgreSQL + consumer + Flyway, end-to-end (demo-ТП). **Сессия 3**: реальный ТП из assembly (Feign + TechProcessMapper) + fallback, fallback проверен. Осталось: (а) поднять assembly (нужен application.yml — порт неизвестен, БД `iktk_assembly`); (б) проверить реальный путь end-to-end; (в) state machine `NORMING` → `POINT_OF_CONTROL` + route + nextAuto=null; (г) тесты + Javadoc; (д) справочники `NormingProperties`. То же для machining/forging | 6-10 ч (сессии 4+) |
 
 ### Грабли (не повторять)
 
@@ -1209,3 +1209,30 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **12 старых сообщений** в `iktk.orchestrator.results.queue` — накоплены ранее, нужно разобрать (или purge).
 - Нет тестов `norming` (`Skipping JaCoCo due to missing execution data`) — сессия 4.
 - `NormingProperties` — defaults; реальные справочники норм — отдельный проект с технологом.
+
+### Обновление 2026-10-25 (norming: сессия 3 — реальный ТП из assembly + fallback)
+
+**Цель:** `norming` считает нормы по **реальному** ТП из `assembly-process-service`, а не только по demo. **Достигнуто:** код готов, fallback проверен, реальный путь ждёт запуска assembly.
+
+**Что сделано:**
+- **assembly**: `GET /api/v1/assembly/processes/{processId}/stages` — список `AssemblyStage` по `processId` (`AssemblyController.getStages` + `AssemblyProcessService.listStages`). До этого был только `GET /processes/{id}` без stages.
+- **norming**: `AssemblyProcessClient` (Feign) — 2 метода: `getProcess(id)`, `getStages(id)`. DTO: `AssemblyProcessDto`, `AssemblyStageDto` (локальные копии для Feign).
+- **norming**: `TechProcessMapper` — `AssemblyProcess + List<AssemblyStage>` -> `TechnologyProcess + List<Stage>`. `operationType` (String) -> `Stage.OperationType` (enum) с fallback на `AUXILIARY`.
+- **norming**: `NormingCommandConsumer.resolveProcess(projectId, processId)`: если `processId` есть — Feign (assembly), если упало — **fallback на demo-ТП**. Если `processId` нет — сразу demo.
+- **norming**: `application.yml` — `iktk.clients.assembly.url` (default `http://localhost:8097`, override через `ASSEMBLY_URL`).
+
+**Проверено (fallback):**
+- Команда с `processId=nonexistent-process-123` при **незапущенном** assembly:
+  `assembly unavailable (Connection refused: GET http://localhost:8097/...)` -> fallback to demo TP -> расчёт -> `NORMS_READY`.
+- БД `demo-fallback-1`: `total_tsh=19.26`, `total_tsh_t=21.26`, `total_tsh_k=24.449` — совпадает с demo.
+
+**НЕ проверено (нужно поднять assembly):**
+- Реальный путь: `assembly` запущен -> `AssemblyProcessClient.getProcess/getStages` -> `TechProcessMapper` -> расчёт по **реальным** операциям из `AssemblyStage`.
+- Пока `assembly` не поднят, `norming` всегда идёт по fallback (demo-ТП).
+
+**Что осталось (сессии 4+):**
+- Поднять `assembly-process-service` (порт? — `application.yml` у assembly **отсутствует**, порт неизвестен; нужно создать `application.yml` с `server.port` и `spring.datasource` на `iktk_assembly`).
+- Проверить реальный путь end-to-end.
+- State machine: `NORMING` пока `AUTOMATIC` — оркестратор не ждёт `norming`. Обсуждать отдельно.
+- Тесты `norming` (unit + integration).
+- `NormingProperties` — defaults.
