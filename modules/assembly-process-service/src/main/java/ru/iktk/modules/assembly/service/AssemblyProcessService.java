@@ -130,6 +130,16 @@ public class AssemblyProcessService {
     }
 
     /**
+     * Список этапов (операций) ТП по его id.
+     */
+    @Transactional(readOnly = true)
+    public List<AssemblyStage> listStages(String processId) {
+        // проверяем, что ТП существует (бросит IllegalArgumentException, если нет)
+        getById(processId);
+        return stageRepository.findByAssemblyProcessIdOrderByStageOrderAsc(processId);
+    }
+
+    /**
      * Список ТП по проекту.
      */
     @Transactional(readOnly = true)

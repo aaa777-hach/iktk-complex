@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.iktk.modules.assembly.dto.AssemblyRequest;
 import ru.iktk.modules.assembly.dto.AssemblyResponse;
 import ru.iktk.modules.assembly.model.AssemblyProcess;
+import ru.iktk.modules.assembly.model.AssemblyStage;
 import ru.iktk.modules.assembly.service.AssemblyProcessService;
 
 import java.util.List;
@@ -61,6 +62,15 @@ public class AssemblyController {
     public ResponseEntity<AssemblyProcess> getProcess(@PathVariable String processId) {
         try {
             return ResponseEntity.ok(assemblyProcessService.getById(processId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/processes/{processId}/stages")
+    public ResponseEntity<List<AssemblyStage>> getStages(@PathVariable String processId) {
+        try {
+            return ResponseEntity.ok(assemblyProcessService.listStages(processId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
