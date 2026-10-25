@@ -1102,7 +1102,7 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 | 4b | Повторная публикация `RECOMMENDATIONS_READY` при идемпотентном повторе | by design, оставить |
 | Javadoc | Кракозябры в комментариях `EquipmentRecommendation`, `EquipmentGapAnalysis`, `EquipmentRequirement` | 30 мин, косметика |
 | ~~jacoco-eq~~ | ~~`equipment-service`: покрытие 60/40 при порогах 75/80~~ ✅ закрыт (lines 80.2%, branches 88.1%) | — |
-| norming | Модуль `norming`: компилируется (сессия 1), но закомментирован в pom.xml. Нужно: NormingCommandConsumer, application.yml, state machine (NORMING -> POINT_OF_CONTROL + route + nextAuto=null), тесты, реальные справочники NormingProperties. То же для machining/forging | 8-16 ч (сессии 2+) |
+| norming | Модуль `norming`: **сессия 1** — компилируется; **сессия 2** — RabbitMQ + PostgreSQL + consumer + Flyway, end-to-end работает (`NORMS_READY` в results). Осталось: (а) реальный ТП через Feign из assembly (маппинг `AssemblyProcess → TechnologyProcess`); (б) state machine `NORMING` → `POINT_OF_CONTROL` + route + nextAuto=null (меняет by-design auto-state — обсуждать); (в) тесты + Javadoc; (г) реальные справочники `NormingProperties`. То же для machining/forging (компиляция) | 6-12 ч (сессии 3+) |
 
 ### Грабли (не повторять)
 
@@ -1120,6 +1120,7 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 12. **Массовое преобразование CP1251→UTF8 по всему файлу может испортить уже корректные строковые литералы с кириллицей.** Если в файле смешанное состояние (Javadoc порчен, а литералы — нет), преобразование ломает литералы (`"Отклонено: "` → `"���������: "`). Решение: проверять diff на не-комментарные `+`-строки перед коммитом, либо применять преобразование точечно к блокам комментариев.
 13. **`mvn verify` в `equipment-service` падает на `jacoco:check`** (60/40 vs 75/80) — предсуществующая проблема, не связана с правками документации. При работе с этим сервисом — либо добавлять тесты, либо временно `-Djacoco.skip=true` для проверки кода, либо чинить техдолг `jacoco-eq`.
 14. **Java-код нельзя вставлять в PowerShell.** Символы `@DisplayName`, `void`, `verify(...)`, `&&` — синтаксис Java; PowerShell ругается `ParserError`/`UnexpectedToken`, и это **не** ошибка файла. Java-код правится через `code`, либо автоматической заменой строк по шаблону (ReadAllLines -> цикл -> WriteAllLines + UTF8Encoding $false). В PowerShell вставляй только команды.
+15. **`git commit -m "русский текст"` из PowerShell 5.1 может испортить сообщение коммита** (двойное перекодирование UTF-8 → CP1251 → UTF-8: `—` превращается в `–≤–ВвАЭ`). При этом `git log` без `[Console]::OutputEncoding = UTF8` показывает кракозябры **и для корректных** коммитов (грабли №11) — легко перепутать. Решение: для длинных/русских сообщений писать в UTF-8-файл (`[System.IO.File]::WriteAllLines($path, $msg, (New-Object System.Text.UTF8Encoding $false))`) и делать `git commit -F commit-msg.txt`. Проверка: `[Console]::OutputEncoding = UTF8; git log -1 --format="%B"`.
 
 ### Правило на будущее
 В конце каждой сессии: `mvn verify` → `EXIT: 0` → коммит кода → дописать в `PROGRESS.md` раздел `## 📌 СЕССИЯ <дата>` (5–10 строк) → `git commit -m "docs: PROGRESS.md — сессия <дата>"`.
@@ -1182,3 +1183,29 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - State machine: `NORMING` пока `AUTOMATIC`; `nextAuto(NORMING) = NORMS_READY` проскакивает без модуля. Для реального нормирования нужно: `NORMING` → `POINT_OF_CONTROL` + `route()` (исключение) + `nextAuto = null` — но это **меняет текущий by-design auto-state**, обсуждать отдельно.
 - Нет `application.yml` (Rabbit, БД, Feign), нет Javadoc, нет тестов.
 - `NormingProperties` — с defaults; реальные справочники (нормы времени по операциям, коэффициенты по материалам) — отдельный проект с технологом.
+
+### Обновление 2026-10-25 (norming: сессия 2 — RabbitMQ + БД, end-to-end)
+
+**Цель:** подключить `norming` к RabbitMQ + PostgreSQL. **Достигнуто:** end-to-end работает.
+
+**Что сделано:**
+- `NormingCommandConsumer` (`messaging/`) — слушает `iktk.norming.queue`, строит demo-ТП, вызывает `TimeNormService.calculate` + `MaterialNormService.calculate`, публикует `NORMS_READY` в `iktk.results` (routing: `iktk.result.norming`).
+- `RabbitTopologyConfig` (`config/`) — `TopicExchange iktk.commands` + `Queue iktk.norming.queue` + `Binding` по `iktk.command.norming`.
+- `application.yml` — Rabbit, PostgreSQL (`iktk_norming`), Flyway, `server.port: 8095`, Feign (`equipment: http://localhost:8094`).
+- `V1__init_norming.sql` — таблицы `time_norms`, `material_norms` (JSONB для `stage_norms`, `consumptions`, `tool_consumptions`, `material`).
+- JPA на `TimeNorm`/`MaterialNorm` — `@Entity`, `@Table`, `@JdbcTypeCode(SqlTypes.JSON)`; `process` → `@Transient` (в БД только `process_id`); `source` → `String` (enum в DTO).
+- `flyway-core` + `flyway-database-postgresql` в `norming/pom.xml` (без них Flyway не запускался, `validate` падал на `missing table`).
+- `norming` раскомментирован в корневом `pom.xml` — теперь 4-й модуль в reactor.
+- Фикс `totalTshT` в `TimeNorm.builder()` — `Тшт.т` сохраняется (раньше `total_tsh_t` был NULL).
+
+**Проверено end-to-end (demo-project-2):**
+- `Тшт=19.26`, `Тшт.т=21.26`, `Тшт.к=24.449` (коэф. CALCULATED=1.15) — математика верна.
+- `blank_mass=0.785`, `part_mass=0.628`, `norm_per_part=0.8248`, `КИМ=0.7614` — расчёт материала верен.
+- `NORMS_READY` ушёл в `iktk.orchestrator.results.queue` (12 → 13).
+
+**Что НЕ сделано (сессии 3+):**
+- **Demo-ТП** — `buildDemoProcess` строит 1 операцию `MACHINING` вручную. Реальный ТП — через Feign из `assembly-process-service` (есть `GET /api/v1/processes/{id}` → `AssemblyProcess`, но нет маппинга `AssemblyProcess → TechnologyProcess`).
+- **State machine оркестратора:** `NORMING` пока `AUTOMATIC` → `nextAuto(NORMING)=NORMS_READY` проскакивает без модуля. Чтобы оркестратор реально ждал `norming`, нужно `NORMING` → `POINT_OF_CONTROL` + `route()` + `nextAuto=null` — **меняет by-design auto-state**, обсуждать отдельно.
+- **12 старых сообщений** в `iktk.orchestrator.results.queue` — накоплены ранее, нужно разобрать (или purge).
+- Нет тестов `norming` (`Skipping JaCoCo due to missing execution data`) — сессия 4.
+- `NormingProperties` — defaults; реальные справочники норм — отдельный проект с технологом.
