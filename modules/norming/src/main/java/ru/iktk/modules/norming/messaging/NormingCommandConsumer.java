@@ -99,11 +99,18 @@ public class NormingCommandConsumer {
 
             TechnologyProcess process = resolveProcess(projectId, processId);
 
+            // ACTUAL — если пришёл реальный processId и ТП загружен из assembly
+            // (тогда TimeNormService берёт To/Tpz из timeNormMin/setupTimeMin).
+            // CALCULATED — если demo-ТП (или assembly недоступен, fallback).
+            TimeNormSource processSource = (processId != null && !processId.startsWith("demo-process-"))
+                ? TimeNormSource.ACTUAL
+                : TimeNormSource.CALCULATED;
+
             TimeNormRequest timeReq = TimeNormRequest.builder()
                     .projectId(projectId)
                     .process(process)
                     .batchSize(BigDecimal.TEN)
-                    .source(TimeNormSource.CALCULATED)
+                    .source(processSource)
                     .enterpriseCode("DEMO-ENTERPRISE")
                     .industryCode("DEMO-INDUSTRY")
                     .build();

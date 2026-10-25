@@ -190,27 +190,94 @@ public class TimeNormService {
         log.debug("TimeNormService.calculateStage: stage={}, operationType={}, source={}",
                 stage.getName(), stage.getOperationType(), source);
 
-        // 1. Основное (машинное) время
-        BigDecimal to = calculateMainTime(stage, process);
+        // 1. Основное (машинное) время (То)
+        //
+        //    ИСТОЧНИК ACTUAL: То = timeNormMin из assembly (готовая норма,
+        //      спроектированная assembly-модулем) — НЕ пересчитываем.
+        //    ИСТОЧНИК CALCULATED/PLANT/INDUSTRY/GENERAL: То = calculateMainTime(...)
+        //      по формуле в зависимости от OperationType:
+        //        - MACHINING, CNC_MACHINING: То = (L·i)/(S·n) — длина·проходы/(подача·обороты);
+        //        - CASTING:                То = масса · коэффициент сложности · база;
+        //        - HOT/COLD_FORGING:       То = масса · коэффициент · база;
+        //        - ASSEMBLY:               То = соединения · время/соединение;
+        //        - TECHNICAL_CONTROL:      То = точки контроля · время/точку;
+        //        - BLANK_PREPARATION:      То = getBlankPrepTime(stage) = 5 мин;
+        //        - HEAT_TREATMENT:         То = getHeatTreatmentTime(stage) = 60 мин;
+        //        - COATING:                То = getCoatingTime(stage) = 10 мин;
+        //        - NORMING, AUXILIARY:     То = 0.5 мин (заглушка).
+        BigDecimal to;
+        if (source == TimeNormSource.ACTUAL && stage.getTimeNormMin() != null) {
+            to = stage.getTimeNormMin();
+            log.debug("TimeNormService: To = timeNormMin (ACTUAL) = {} мин для stage={}",
+                    to, stage.getName());
+        } else {
+            to = calculateMainTime(stage, process);
+        }
 
-        // 2. Вспомогательное время
-        BigDecimal tv = calculateAuxiliaryTime(stage, process);
+        // 2-6. Для источника ACTUAL (реальный ТП из assembly):
+        //
+        //    assembly уже включает полную норму операции в timeNormMin
+        //    (подтверждено: assembly.totalTimeMin = Σ timeNormMin + Σ setupTimeMin).
+        //    Поэтому Tv, Tob, Totl НЕ добавляем повторно — иначе двойной счёт.
+        //    Итог:
+        //      Tsh   = To
+        //      Tsh.t = To + Tpz/n
+        //      Tsh.k = Tsh.t × k_source (для ACTUAL k=1.0)
+        //
+        //    Для CALCULATED/PLANT/INDUSTRY/GENERAL: считаем полную цепочку
+        //    по формулам (To из calculateMainTime, Tv/Tob/Totl — по properties).
+        BigDecimal tv;
+        BigDecimal top;
+        BigDecimal tob;
+        BigDecimal totl;
+        BigDecimal tsh;
+        if (source == TimeNormSource.ACTUAL) {
+            tv   = BigDecimal.ZERO;
+            top  = to;
+            tob  = BigDecimal.ZERO;
+            totl = BigDecimal.ZERO;
+            tsh  = to;
+        } else {
+            // 2. Вспомогательное время (Тв)
+            //    Формула: Тв = время установки + время обработки + время контроля
+            //    (через properties.getSetupTime/getControlTime/getHandlingTime)
+            tv = calculateAuxiliaryTime(stage, process);
 
-        // 3. Оперативное время
-        BigDecimal top = to.add(tv);
+            // 3. Оперативное время (Топ)
+            //    Формула: Топ = То + Тв
+            top = to.add(tv);
 
-        // 4. Время обслуживания рабочего места
-        BigDecimal tob = calculateServiceTime(top, stage);
+            // 4. Время обслуживания рабочего места (Тоб)
+            //    Формула: Тоб = Топ × (процент обслуживания / 100)
+            //    (процент обслуживания — из properties.getServicePercent(stage), default 3%)
+            tob = calculateServiceTime(top, stage);
 
-        // 5. Время на отдых и личные надобности
-        BigDecimal totl = calculateRestTime(top, stage);
+            // 5. Время на отдых и личные надобности (Тотл)
+            //    Формула: Тотл = Топ × (процент отдыха / 100)
+            //    (процент отдыха — из properties.getRestPercent(stage), default 4%)
+            totl = calculateRestTime(top, stage);
 
-        // 6. Штучное время
-        BigDecimal tsh = top.add(tob).add(totl);
+            // 6. Штучное время (Тшт)
+            //    Формула: Тшт = Топ + Тоб + Тотл
+            tsh = top.add(tob).add(totl);
+        }
 
-        // 7. Подготовительно-заключительное время
-        BigDecimal tpz = calculateSetupTime(stage, process);
-
+        // 7. Подготовительно-заключительное время (Тпз)
+        //
+        //    ИСТОЧНИК ACTUAL: Тпз = setupTimeMin из assembly (готовая норма).
+        //    ИСТОЧНИК CALCULATED/...: Тпз = calculateSetupTime(...)
+        //      Формула: Тпз = базовое_Тпз + Тпз_оснастки (если есть tooling)
+        //                            + Тпз_оборудования (если есть equipment).
+        //      (базовое_Тпз = properties.getSetupTimeTpz(stage) = 20 мин,
+        //       Тпз_оснастки = 5 мин, Тпз_оборудования = 8 мин)
+        BigDecimal tpz;
+        if (source == TimeNormSource.ACTUAL && stage.getSetupTimeMin() != null) {
+            tpz = stage.getSetupTimeMin();
+            log.debug("TimeNormService: Tpz = setupTimeMin (ACTUAL) = {} мин для stage={}",
+                    tpz, stage.getName());
+        } else {
+            tpz = calculateSetupTime(stage, process);
+        }
         // 8. Штучно-калькуляционное время
         BigDecimal tshK = tsh.add(
                 tpz.divide(batchSize, 4, RoundingMode.HALF_UP)
