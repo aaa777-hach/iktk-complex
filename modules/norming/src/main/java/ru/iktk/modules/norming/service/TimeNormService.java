@@ -152,6 +152,7 @@ public class TimeNormService {
                 .stageNorms(stageNorms)
                 .totalTpz(totalTpz)
                 .totalTsh(totalTsh)
+                .totalTshT(totalTshT)
                 .totalTshK(totalTshK)
                 .createdAt(Instant.now())
                 .build();
