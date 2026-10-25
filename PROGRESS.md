@@ -1421,3 +1421,37 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - `machining`/`forging` — по образцу `norming` (компиляция + RabbitMQ).
 - Тесты `norming`, Javadoc.
 - Реальные справочники `NormingProperties`.
+
+### Обновление 2026-10-25 (bom-service: BOM из geometry -> iktk_bom, session 6)
+
+**Цель:** `bom-service` должен извлекать BOM из `integration` (geometry) и сохранять в `iktk_bom`, публиковать `BOM_EXTRACTED`. **Достигнуто:** работает end-to-end.
+
+**Проблемы, которые пришлось решить:**
+- **Порт 8097** — конфликт `bom-service` и `assembly-process-service`. `bom-service` -> **8091**, `integration` -> **8092** (было 8095, занято `norming`).
+- **`integration` без datasource** — `application.yml` был только с `server.port` + `logging`. Добавлены `spring.datasource` (БД `iktk_geometry`), `spring.jpa`, `spring.flyway`.
+- **API не стыкуется** — `bom-service.IntegrationClient` (Feign) ждёт `/api/v1/integration/{cad-system,bom,connections}`, а `integration.GeometryController` отдаёт `/api/v1/geometry/{projectId}`. Создан `IntegrationController` (3 эндпоинта) + DTO (`RawBomDto`, `RawItemDto`, `RawConnectionDto`).
+- **`@EntityScan` тянул `projects`** — `Schema-validation: missing table [projects]` (грабли №8). `bom-service/BomApplication`: `@EntityScan` сужен до `ru.iktk.bom.model` (без `ru.iktk.core.domain`).
+- **`StorageClient` (MinIO) без бина** — `scanBasePackages = "ru.iktk.shared"` тянул `StorageClient`, а `MinioClient` не создавался (грабли №7). В `shared` добавлен `MinioConfig` (`@Bean MinioClient`, endpoint `http://localhost:9000`, `iktk-minio`/`iktk_dev_password`).
+- **Нет `RabbitTopologyConfig`** — очередь `iktk.bom-service.queue` не создавалась, consumer падал с `NOT_FOUND`. Создан `bom-service/config/RabbitTopologyConfig`.
+- **Нет `iktk.entity_versions`** — `VersioningService` (shared) пишет в `iktk.entity_versions`, но миграции не было. Создана `V2__entity_versions.sql` (схема `iktk` + таблица).
+- **`projectId` должен быть UUID** — `VersioningService` вызывает `UUID.fromString(projectId)`. Тестовые `bom-smoke-1` падали; перешли на UUID.
+
+**Проверено end-to-end (`projectId=addbafb1-...`):**
+- `integration/bom?geometryId=geo-12345` -> `RawBom` (`rootId=ASSY-test`, `items=[{id: geo-12345, material: Steel 20Kh, type: PART}]`).
+- `BomCommandConsumer` -> `analysis done, status=COMPLETED, positions=1`, `result sent, success=true`.
+- **БД `iktk_bom`:**
+  - `assembly_units`: `project_id=addbafb1-...`, `designation=ASSY-addbafb1-...`, `item_count=1`.
+  - `bom_items`: `designation=geo-12345`, `quantity=1`, `material=Steel 20Kh`, `item_type=PART`.
+  - `iktk.entity_versions`: `ASSEMBLY | v1 | CREATE | system`.
+
+**Коммиты:**
+- `7ccbfd7` — `feat(shared): MinioConfig` (40 insertions).
+- `6c5633b` — `feat(bom-service,integration): bom-service end-to-end` (9 files, 266 insertions, 16 deletions).
+
+**Что НЕ сделано (сессия 7+):**
+- **Полный smoke через orchestrator** (`ASSEMBLY_ANALYSIS -> bom-service -> BOM_EXTRACTED -> PART_PROCESS_PLANNING`) — orchestrator убит (останавливали всё для install shared). Нужно перезапустить orchestrator (8080), equipment (8094), norming (8095), assembly (8097), recommendation (8098) — все были убиты.
+- **`casting`** — не проверен (нет перехода `PART_PROCESS_PLANNING -> casting` в smoke).
+- **`machining`/`forging`** — по образцу `norming` (компиляция + RabbitMQ).
+- **Тесты `bom-service`/`integration`/`norming`** + Javadoc.
+- **Реальные справочники** `NormingProperties`.
+- **`integration`** — пока «1 геометрия = 1 деталь», нет многоуровневой сборки (для реального BOM из CAD).
