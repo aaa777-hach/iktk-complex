@@ -1236,3 +1236,28 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - State machine: `NORMING` пока `AUTOMATIC` — оркестратор не ждёт `norming`. Обсуждать отдельно.
 - Тесты `norming` (unit + integration).
 - `NormingProperties` — defaults.
+
+### Обновление 2026-10-25 (assembly: запущен, реальный ТП в norming)
+
+**Цель:** поднять `assembly-process-service` и проверить реальный путь `assembly -> norming`. **Достигнуто:** assembly работает на 8097, реальный ТП загружается и рассчитывается.
+
+**Что сделано в assembly:**
+- `application.yml` — старый файл в **корне модуля** (порт 8096) переименован в `.bak`, объединён с новым в `src/main/resources/application.yml`: порт **8097**, `iktk.assembly.*`, `iktk.equipment.url`, `iktk.integration.url`, `baseline-on-migrate`, `missing-queues-fatal: false`.
+- `scanBasePackages`: `"ru.iktk.shared"` -> `"ru.iktk.core"` — иначе `StorageClient` (MinIO) тянул `MinioClient` (грабли №7), приложение падало на старте.
+- `RabbitTopologyConfig` — создан: `Queue iktk.assembly-process-service.queue` + `Binding` по `iktk.command.assembly-process-service`. До этого очередь не создавалась, consumer падал с `NOT_FOUND`.
+- БД `iktk_assembly` создана, Flyway применил `V1__init.sql` (таблицы `assembly_process`, `assembly_stage`, `assembly_component`).
+
+**Проверено end-to-end (реальный ТП):**
+- `POST /api/v1/assembly/processes` -> `processId=1b959c6f-...`, `stageCount=5`, `componentCount=3`, `totalTimeMin=165`.
+- `GET /api/v1/assembly/processes/{id}/stages` -> 5 операций: `PREPARATION`, `BASIC_ASSEMBLY`, `NODE_ASSEMBLY`, `GENERAL_ASSEMBLY`, `CONTROL`.
+- Команда в `norming` с `processId=1b959c6f-...` -> `loaded real TP from assembly, stages=5` -> расчёт -> БД `demo-real-tp-1`: `total_tsh=93.625`, `total_tsh_t=103.625`, `total_tsh_k=119.170`.
+
+**Технологические вопросы (для следующей сессии, с Анатолием):**
+- **`operationType` из assembly не совпадает с `Stage.OperationType`:** `PREPARATION`/`BASIC_ASSEMBLY`/`NODE_ASSEMBLY`/`GENERAL_ASSEMBLY`/`CONTROL` -> все fallback в `AUXILIARY`. Нужна таблица соответствий (`PREPARATION -> BLANK_PREPARATION`, `*_ASSEMBLY -> ASSEMBLY`, `CONTROL -> TECHNICAL_CONTROL`) или новые константы в `Stage.OperationType`.
+- **`AssemblyStage.timeNormMin` (готовые нормы 20/25/30/35/40 мин) не используются** — `TimeNormService` пересчитывает по формулам `NormingProperties` (defaults). Решить: `timeNormMin` — готовая норма (`source=ACTUAL`) или исходное машинное время (тогда пересчёт нужен).
+
+**Что осталось:**
+- Маппинг `operationType` + решение по `timeNormMin` (сессия 4).
+- State machine: `NORMING` пока `AUTOMATIC` — оркестратор не ждёт `norming`.
+- Тесты `norming`, Javadoc, реальные справочники `NormingProperties`.
+- `machining`/`forging` — в том же состоянии, что был `norming` (компиляция + RabbitMQ).
