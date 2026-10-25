@@ -1344,3 +1344,39 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Тесты `norming`, Javadoc.
 - Реальные справочники `NormingProperties`.
 - **Smoke полного цикла** (orchestrator + casting + assembly + equipment + recommendation + norming) — увидеть всю цепочку вживую.
+
+### Обновление 2026-10-25 (SMOKE полного цикла: PART_PROCESS_PLANNING -> COMPLETED)
+
+**Цель:** пройти полный цикл от создания проекта до `COMPLETED` через реальные сервисы. **Достигнуто:** `state = COMPLETED`, `completed = true`.
+
+**Сценарий (smoke-проект `ab59102a-...`):**
+1. `POST /projects` -> `PART_PROCESS_PLANNING` (POINT_OF_CONTROL).
+2. `approve` -> `TOOLING_DESIGN`.
+3. `approve` -> `EQUIPMENT_MATCHING` (auto).
+4. `POST /events?event=EQUIPMENT_GAP` -> `EQUIPMENT_GAP_RESOLUTION` (auto).
+5. `recommendation-service` consumer -> `RECOMMENDATIONS_READY` -> `RECOMMENDATION_REVIEW`.
+6. `approve` -> `ASSEMBLY_PROCESS_PLANNING`.
+7. **`run`** -> `route()` -> `iktk.command.assembly-process-service` -> `AssemblyCommandConsumer` -> `designProcess` -> `processId=4f2b2291-...` (5 stages, 3 components) -> `ASSEMBLY_PROCESS_READY` -> **`NORMING`**.
+8. **`run`** -> `route()` -> `iktk.command.norming` -> `NormingCommandConsumer` -> `NORMS_READY` -> `DOCUMENTATION` (auto) -> `TECHNICAL_CONTROL`.
+9. `approve` -> **`COMPLETED`**.
+
+**Что проверено (работает):**
+- Полная state machine: 13 состояний, 5 точек контроля, auto-переходы.
+- `route()` -> assembly (`ASSEMBLY_PROCESS_PLANNING` — наш фикс), реальный ТП спроектирован (`stages=5`).
+- `route()` -> norming (`NORMING` — наш фикс), consumer отработал, `NORMS_READY` дошёл.
+- `recommendation-service` — consumer отработал, `RECOMMENDATIONS_READY` дошёл.
+- RabbitMQ: очереди `casting`, `assembly`, `norming`, `recommendation` — все с consumer'ами.
+
+**НАЙДЕН БАГ (следующая задача):**
+- **`processId` от assembly не доходит до norming.** В smoke-проекте `norming` посчитал **demo-ТП** (`process_id = demo-process-ab59102a-...`, `total_tsh = 19.26`), а не реальный ТП от assembly (`processId = 4f2b2291-...`, `stages = 5`).
+- **Причина:** `AssemblyCommandConsumer` возвращает `ASSEMBLY_PROCESS_READY` с `processId` в payload, но `orchestrator.onModuleResult` **не сохраняет** `processId` в `runtime.payload`. При `route(NORMING)` payload пустой -> `norming` идёт по fallback (demo-ТП).
+- **Решение:** в `orchestrator` — `onModuleResult` должен мержить `payload` из результата модуля в `runtime.payload`, чтобы `processId` (и другие артефакты) доходили до следующего модуля. Это архитектурная правка (сессия 5).
+
+**Сервисы (запущены):**
+- `orchestrator` — 8080 (H2 in-memory, при перезапуске данные теряются).
+- `assembly-process-service` — 8097 (`iktk_assembly`, Flyway V1).
+- `norming` — 8095 (`iktk_norming`, Flyway V1).
+- `recommendation-service` — 8098.
+- `equipment-service` — 8094.
+- `casting` — не запущен (нет consumer на `iktk.casting.queue`), для smoke не потребовался (нет перехода в `casting` в этом сценарии).
+- RabbitMQ, PostgreSQL, Redis, MinIO — docker.
