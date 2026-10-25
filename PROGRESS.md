@@ -1387,3 +1387,37 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Грабли (поиск java-процессов):** `Get-CimInstance Win32_Process | Where CommandLine -match "assembly-process-service"` находит **mvn-родителя**, но **не java-процесс** (у него `-cp @argfile`, без имени модуля). Искать по **порту** (`Get-NetTCPConnection -LocalPort 8097`), а не по `CommandLine`.
 - **`run-norming.log` — старые записи** (PID 19960, `10:43`). Новый `norming` (PID 10904) пишет в **своё окно**, не в файл. При следующем запуске — `Tee-Object` для лога.
 - **`casting` не проверен** в полном цикле: на `PART_PROCESS_PLANNING` сделан `approve` (ручное подтверждение), а не `run` → `casting`. Для проверки ветки `casting` — отдельный smoke (сессия 5+).
+
+### Обновление 2026-10-25 (payload propagation: фикс + SMOKE v3)
+
+**Цель:** закрыть баг из SMOKE v2 — `processId` от assembly не доходил до norming (fallback на demo-ТП). **Достигнуто:** `processId` доходит, `norming` считает по **реальному** ТП.
+
+**Причина (из SMOKE v2):**
+- `ModuleResultConsumer.onResult` извлекал `payload` (с `processId`) из сообщения модуля, `onModuleResult` передавал в `dispatchEvent`, но `dispatchEvent` **не сохранял** payload в `runtime`.
+- `run()` берёт `payload` из `runtime.getPayload()` -> при `route(NORMING)` payload был `null` -> norming шёл по fallback (demo-ТП, `19.26`).
+
+**Фикс (`4f901fa`, 1 файл, 16 insertions, 1 deletion):**
+- `OrchestrationService.dispatchEvent`: перед `persistState` добавлен мерж `payload` в `runtime`:
+  - `merged = runtime.getPayload() + payload` (новый payload перекрывает старый);
+  - `runtime.setPayload(merged)` + `projectStateRepository.save(runtime)`;
+  - работает только если `payload != null && !payload.isEmpty()` (не затирает существующий пустым).
+- `import java.util.HashMap` добавлен (для `merged`).
+
+**SMOKE v3 (проект `4bb222b5-...`):**
+- Тот же сценарий, что v2: `PART_PROCESS_PLANNING -> … -> ASSEMBLY_PROCESS_PLANNING -> NORMING -> TECHNICAL_CONTROL -> COMPLETED`.
+- `state = COMPLETED`, `completed = true`.
+- **БД `iktk_norming`:** `process_id = 13409cf4-f92f-420e-a380-b32f5250460a` (**реальный UUID от assembly**, не `demo-process-...`), `total_tsh = 150.0`, `total_tsh_t = 151.5`, `total_tsh_k = 151.5`.
+
+**Сравнение с SMOKE v2:**
+| Проект | `process_id` | `total_tsh` | `total_tsh_k` | Статус |
+|---|---|---|---|---|
+| `ab59102a-...` (v2) | `demo-process-...` | 19.26 | 24.449 | fallback (баг) |
+| **`4bb222b5-...` (v3)** | **`13409cf4-...`** (реальный) | **150.0** | **151.5** | **фикс работает** |
+
+**Тесты:** `mvn -pl orchestrator -am verify` -> **BUILD SUCCESS**, **103/103**, jacoco passed.
+
+**Что осталось:**
+- `casting` не проверен в полном цикле (в smoke обходим через `approve`).
+- `machining`/`forging` — по образцу `norming` (компиляция + RabbitMQ).
+- Тесты `norming`, Javadoc.
+- Реальные справочники `NormingProperties`.
