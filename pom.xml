@@ -33,7 +33,7 @@
         <module>modules/integration</module>
     <!-- <module>modules/forging</module> -->
     <!-- <module>modules/machining</module> -->
-    <!-- <module>modules/norming</module> -->
+    <module>modules/norming</module>
 
     <!-- РќРµРґРѕРїРёСЃР°РЅРЅС‹Рµ РјРѕРґСѓР»Рё: РІСЂРµРјРµРЅРЅРѕ РёСЃРєР»СЋС‡РµРЅС‹ РёР· СЃР±РѕСЂРєРё -->
     <module>services/equipment-service</module>

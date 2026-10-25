@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: norming
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:iktk}
+    password: ${RABBITMQ_PASSWORD:iktk_dev_password}
+    virtual-host: ${RABBITMQ_VHOST:/iktk}
+  datasource:
+    url: ${NORMING_DB_URL:jdbc:postgresql://localhost:5432/iktk_norming}
+    username: ${NORMING_DB_USER:iktk_app}
+    password: ${NORMING_DB_PASSWORD:iktk_dev_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+iktk:
+  messaging:
+    commands-exchange: iktk.commands
+    routing-prefix: iktk.command
+    commands-queue: iktk.norming.queue
+    results-exchange: iktk.results
+    results-queue: iktk.orchestrator.results.queue
+  clients:
+    equipment:
+      url: ${EQUIPMENT_URL:http://localhost:8094}
+
+server:
+  port: 8095
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

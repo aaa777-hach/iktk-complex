@@ -147,7 +147,7 @@ public class TimeNormService {
                 .id(UUID.randomUUID().toString())
                 .projectId(projectId)
                 .processId(process.getId())
-                .source(source)
+                .source(source == null ? null : source.name())
                 .batchSize(batchSize)
                 .stageNorms(stageNorms)
                 .totalTpz(totalTpz)
