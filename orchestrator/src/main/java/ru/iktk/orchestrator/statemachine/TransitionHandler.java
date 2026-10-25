@@ -129,7 +129,7 @@ public class TransitionHandler {
             case PROJECT_INIT          -> ProjectEvent.START_GEOMETRY_INPUT;
             case GEOMETRY_INPUT        -> ProjectEvent.GEOMETRY_UPLOADED;
             case GEOMETRY_ANALYSIS     -> ProjectEvent.IS_PART;      // по умолчанию деталь
-            case ASSEMBLY_ANALYSIS     -> ProjectEvent.BOM_EXTRACTED;
+            case ASSEMBLY_ANALYSIS     -> null; // wait for external BOM_EXTRACTED from bom-service
             case EQUIPMENT_MATCHING    -> null; // wait for external EQUIPMENT_GAP (techdebt: equipment-service consumer)
             case EQUIPMENT_GAP_RESOLUTION -> null; // wait for external RECOMMENDATIONS_READY from recommendation-service
             case NORMING               -> null; // wait for external NORMS_READY from norming-module

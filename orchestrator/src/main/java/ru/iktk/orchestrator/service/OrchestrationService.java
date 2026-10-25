@@ -61,13 +61,25 @@ public class OrchestrationService {
         String projectId = UUID.randomUUID().toString();
         log.info("startProject: projectId={}, name={}", projectId, request.getProjectName());
 
+        // Начальный payload: objectRef, objectType (ASSEMBLY/PART), assemblyId
+        // objectType нужен dispatchEvent для выбора IS_ASSEMBLY vs IS_PART
+        // на GEOMETRY_ANALYSIS.
+        Map<String, Object> initialPayload = new HashMap<>();
+        if (request.getGeometryId() != null && !request.getGeometryId().isBlank()) {
+            initialPayload.put("objectRef", request.getGeometryId());
+        }
+        if (request.getObjectType() != null) {
+            initialPayload.put("objectType", request.getObjectType().name());
+        }
+        if (request.getAssemblyId() != null && !request.getAssemblyId().isBlank()) {
+            initialPayload.put("assemblyId", request.getAssemblyId());
+        }
+
         ProjectRuntime runtime = ProjectRuntime.builder()
                 .projectId(projectId)
                 .projectName(request.getProjectName())
                 .requestedBy(request.getRequestedBy())
-                .payload(request.getGeometryId() != null && !request.getGeometryId().isBlank()
-                        ? Map.of("objectRef", request.getGeometryId())
-                        : Map.of())
+                .payload(initialPayload)
                 .state(ProjectState.PROJECT_INIT)
                 .createdAt(Instant.now())
                 .build();
@@ -278,6 +290,20 @@ public class OrchestrationService {
             transitionHandler.route(projectId, newState, sm, payload);
         }        if (transitionHandler.isAutoState(newState)) {
             ProjectEvent autoEvent = transitionHandler.nextAuto(newState);
+
+            // Спецслучай: GEOMETRY_ANALYSIS + objectType=ASSEMBLY -> IS_ASSEMBLY
+            // (nextAuto по умолчанию возвращает IS_PART — "по умолчанию деталь").
+            if (newState == ProjectState.GEOMETRY_ANALYSIS
+                    && autoEvent == ProjectEvent.IS_PART) {
+                ProjectRuntime rt = loadRuntime(projectId);
+                if (rt.getPayload() != null
+                        && "ASSEMBLY".equals(String.valueOf(rt.getPayload().get("objectType")))) {
+                    autoEvent = ProjectEvent.IS_ASSEMBLY;
+                    log.info("dispatchEvent: GEOMETRY_ANALYSIS + objectType=ASSEMBLY -> IS_ASSEMBLY, projectId={}",
+                            projectId);
+                }
+            }
+
             if (autoEvent != null) {
                 dispatchEvent(projectId, sm, autoEvent, null);
             }
