@@ -1,0 +1,74 @@
+server:
+  port: 8095
+
+spring:
+  application:
+    name: machining
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/iktk_machining}
+    username: ${SPRING_DATASOURCE_USERNAME:iktk}
+    password: ${SPRING_DATASOURCE_PASSWORD:iktk}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 5000
+            readTimeout: 30000
+            loggerLevel: basic
+  jackson:
+    default-property-inclusion: non_null
+
+iktk:
+  messaging:
+    commands-exchange: iktk.commands
+    routing-prefix: iktk.command
+    commands-queue: iktk.machining.queue
+    results-exchange: iktk.results
+    result-routing-key: iktk.result.machining
+  machining:
+    integration:
+      url: ${IKTK_INTEGRATION_URL:http://localhost:8092}
+    equipment:
+      url: ${IKTK_EQUIPMENT_URL:http://localhost:8094}
+    tooling:
+      url: ${IKTK_TOOLING_URL:http://localhost:8096}
+    storage:
+      endpoint: ${IKTK_STORAGE_URL:http://localhost:9000}
+      bucket: iktk
+      access-key: ${IKTK_STORAGE_ACCESS_KEY:minioadmin}
+      secret-key: ${IKTK_STORAGE_SECRET_KEY:minioadmin}
+    cnc:
+      default-postprocessor: ISO6983
+    min-internal-radius: 2.0
+    min-wall-thickness: 1.0
+    max-hole-depth-ratio: 10.0
+    max-accuracy: 0.02
+    grinding-threshold: 0.01
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+logging:
+  level:
+    ru.iktk.modules.machining: INFO

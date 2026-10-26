@@ -99,7 +99,7 @@ public class MachiningApplication {
         String port = env.getProperty("server.port", "8095");
         String profile = String.join(",", env.getActiveProfiles());
         String queueCmd = env.getProperty(
-                "iktk.messaging.commands-queue", "iktk.command.machining");
+                "iktk.messaging.commands-queue", "iktk.machining.queue");
         String queueRes = env.getProperty(
                 "iktk.messaging.results-queue", "iktk.results");
         String cncPostprocessor = env.getProperty(

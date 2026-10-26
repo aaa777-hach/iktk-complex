@@ -1618,3 +1618,33 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Тесты** `machining` (как `forging` — отдельная сессия).
 - **`machining` Messaging:** `MachiningCommandConsumer` (не создан в этой сессии; следующий шаг).
 - **`integration`** — многоуровневая сборка (не «1 геометрия = 1 деталь»).
+
+### Обновление 2026-10-26 (machining: messaging end-to-end, consumer готов)
+
+**Цель:** `machining` из «компилируется, но не запускается» → **готов к E2E** (consumer слушает очередь, публикует результат). **Достигнуто.**
+
+**Создано (4 файла, коммит `d6e0b21`):**
+- `application.yml` (74 строки): порт **8095**, БД `iktk_machining`, RabbitMQ localhost:5672, Feign URL (integration:8092, equipment:8094, tooling:8096), `iktk.messaging.*` с `iktk.machining.queue`, справочные заглушки `iktk.machining.*`.
+- `db/migration/V1__init.sql` (33 строки): таблицы `machining_process` и `cnc_program`, JSONB для вложенных, индексы по `project_id`/`object_ref`/`process_id`.
+- `config/RabbitTopologyConfig.java` (44 строки): топология **по образцу forging** — exchange `iktk.commands` (topic), routing key `iktk.command.machining`, очередь `iktk.machining.queue`. DLQ не добавляли (как в forging).
+- `messaging/MachiningCommandConsumer.java` (131 строка): `@RabbitListener` на `iktk.machining.queue` → `designProcess` → `PART_PROCESS_READY` в `iktk.results` (routing `iktk.result.machining`). Формат входа — как в forging: `Map<String,Object>` через `ObjectMapper`, поля `projectId` + `payload.objectRef`.
+
+**Правки (1):**
+- `MachiningApplication.main`: дефолт очереди в логе → `iktk.machining.queue` (для консистентности с forging).
+
+**Исправление неточности PROGRESS.md (сессия 10):**
+- Было записано «очередь `iktk.command.forging`», фактически в forging — **`iktk.forging.queue`**. Приведено к единому паттерну `<module>.queue`.
+
+**Проверено:**
+- `mvn -pl modules/machining -am compile` → **BUILD SUCCESS** (уже с consumer'ом).
+- `mvn -pl modules/machining -am verify`  → **BUILD SUCCESS**.
+
+**Грабли (в этой сессии):**
+- **`mvn compile` = SUCCESS ≠ «все файлы созданы».** В прошлой попытке D.1–D.3 не выполнились, но compile прошёл — потому что компилировал старый код без consumer'а. Урок: после каждого создающего блока — явный `Test-Path` + `git status`.
+- **A.3 (5 файлов) не были применены в сессии A.** Только `A.3-fix` (раскомментировать `pom.xml`). `application.yml`, `V1__init.sql`, `RabbitTopologyConfig.java` не создавались. Не блокировало компиляцию, но сломало бы E2E. Восстановлено в D-fix.
+
+**Что осталось (перед E2E):**
+- **Feign-контракты** — сверить `@GetMapping` пути с реальными эндпоинтами `integration:8092` / `equipment:8094` / `tooling:8096`. Без этого E2E упадёт на клиенте (404).
+- **E2E-прогон** `machining`: `iktk.command.machining` → `PART_PROCESS_READY` → запись в `iktk_machining`.
+- **Реальные реализации** заглушек (`ToolpathGenerator`, `GCodeValidator`, `StorageClient`/MinIO, `MachiningProperties` — справочники).
+- **Тесты** `machining`.
