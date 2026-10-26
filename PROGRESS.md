@@ -1879,3 +1879,42 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Косметика OperationProgram** (отступы), Javadoc {@link GeometryClient}.
 - **Тесты** machining.
 - **iktk.orchestrator.results.queue** — 32 сообщения без consumer'а.
+
+### Обновление 2026-10-26 (C.4: GCodeValidator — реальная валидация)
+
+**Цель:** GCodeValidator из заглушки -> оркестратор 4 правил + 6 тестов. **Достигнуто.**
+
+**Создано (6 файлов):**
+- validator/GCodeRule.java (interface): check(gcode, equipment, props, fullProgram, errors, warnings)
+- validator/SyntaxRule.java (@Component): regex на каждую строку ISO 6983
+- validator/BoundsRule.java (@Component): X/Y/Z в пределах заготовки + marginXY=5, marginZ=5
+- validator/StructureRule.java (@Component): для fullProgram — % в начале, M30 в конце; fragment — skip
+- validator/FeedRule.java (@Component): G01 без F — warning, G00 с F — warning
+- src/test/java/.../GCodeValidatorTest.java: 6 тестов (validFullProgram, missingM30, outOfBoundsX, syntaxError, feedWarning, validFragmentWithoutHeaderFooter)
+
+**Правки (1 файл):**
+- validator/GCodeValidator.java: оркестратор, List<GCodeRule>, run(fullProgram) с try/catch на каждое правило
+
+**Правила (детали):**
+- Syntax: ^\s*(;.*|%|O\d+.*|M\d+.*|G\d+(\s+[XYZF]-?\d+(\.\d+)?)*)?\s*$
+- Bounds: X∈[-5,L+5], Y∈[-5,W+5], Z∈[-H,5]; marginXY=max(5, 5%), marginZ=5
+- Structure: fullProgram — первая значимая строка = %, последняя = M30
+- Feed: G01 без F / G00 с F — warning (не error)
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS, Tests run: 6, Failures: 0, Errors: 0
+- E2E: cnc_program (135 строк, 3688 байт) -> validation.valid=true, errors=[], warnings=[]
+
+**Грабли:**
+- **Правила в одном пакете с GCodeValidator** — меньше импортов, Spring сканирует подпакеты.
+- **try/catch на каждое правило** — если одно падает, остальные продолжают; ошибка правила = error, не падение валидатора.
+- **Штатный G-код должен проходить без warning'ов** — это критерий «правила не сломали E2E». Негативные тесты — только в JUnit, не через прод.
+
+**Что осталось:**
+- **C.5:** MachiningProperties — реальные справочники (V, S, t, T по материалам/инструментам).
+- **C.3.10:** косметика (дубль G01 в MillingStrategy, DrillingStrategy tool type).
+- **C.2.1b (опционально):** поднять integration:8092, E2E с реальным Feign.
+- **Косметика OperationProgram** (отступы), Javadoc {@link GeometryClient}.
+- **Тесты machining:** только validator (стратегии, сервисы — без тестов).
+- **iktk.orchestrator.results.queue** — 33 сообщения без consumer'а.
