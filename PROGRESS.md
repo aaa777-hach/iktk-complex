@@ -1510,3 +1510,28 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Полный smoke до `COMPLETED` (`TOOLING_DESIGN → … → TECHNICAL_CONTROL`).
 - Тесты `bom-service`/`integration`/`norming`/`casting` + Javadoc.
 - Реальные справочники `NormingProperties`.
+
+### Обновление 2026-10-26 (ПОЛНЫЙ SMOKE до COMPLETED)
+
+**Цель:** пройти полный цикл от `POST /projects` до `COMPLETED` через **все** реальные сервисы. **Достигнуто.**
+
+**Сценарий (`projectId=2eaea50f-0f41-4027-8dd5-a26b5f4852cc`):**
+1. `POST /projects` (`objectType=ASSEMBLY`, `geometryId=geo-12345`) -> `ASSEMBLY_ANALYSIS`.
+2. `bom-service` (асинхронно) -> `BOM_EXTRACTED` -> `PART_PROCESS_PLANNING`.
+3. `run` -> `casting` -> `PART_PROCESS_READY` -> `TOOLING_DESIGN`.
+4. `approve` -> `EQUIPMENT_MATCHING` (auto).
+5. `POST /events?event=EQUIPMENT_GAP` -> `EQUIPMENT_GAP_RESOLUTION`.
+6. `recommendation-service` -> `RECOMMENDATIONS_READY` -> `RECOMMENDATION_REVIEW`.
+7. `approve` -> `ASSEMBLY_PROCESS_PLANNING`.
+8. `run` -> `assembly` -> `ASSEMBLY_PROCESS_READY` -> `NORMING`.
+9. `norming` -> `NORMS_READY` -> `DOCUMENTATION` (auto) -> `TECHNICAL_CONTROL`.
+10. `approve` -> **`COMPLETED`** (`completed=true`, `stateCategory=TERMINAL`).
+
+**БД после smoke:**
+- `iktk_bom.assembly_units`: `project_id=2eaea50f-...`, `designation=ASSY-2eaea50f-...`, `item_count=1`.
+- `iktk_casting.casting_process`: `project_id=2eaea50f-...`, `method=INVESTMENT_CASTING`, `object_ref=geo-12345`.
+- `iktk_norming.time_norms`: `project_id=2eaea50f-...`, `process_id=c399bcad-...`, `total_tsh=150.0`, `total_tsh_k=151.5` (реальные нормы, не demo).
+
+**Что это доказывает:** вся система работает end-to-end — orchestrator, bom-service, casting, recommendation, assembly, norming, equipment, integration — через RabbitMQ, Feign, PostgreSQL, Flyway. **3 модуля** (bom, casting, norming) оставили реальные записи в своих БД.
+
+**Замечание по процессу:** в шагах 7-9 потребовался повторный `run` (assembly обрабатывал >3 сек) — это нормально для асинхронной архитектуры. `norming` отработал (запись в БД с реальными числами).
