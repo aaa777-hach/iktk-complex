@@ -1918,3 +1918,49 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Косметика OperationProgram** (отступы), Javadoc {@link GeometryClient}.
 - **Тесты machining:** только validator (стратегии, сервисы — без тестов).
 - **iktk.orchestrator.results.queue** — 33 сообщения без consumer'а.
+
+### Обновление 2026-10-26 (C.5: MachiningProperties — реальные справочники V/S/t/T)
+
+**Цель:** заглушки getCuttingSpeed/getFeed/getToolLife (120/0.2/60) -> lookup по (material, method). **Достигнуто.**
+
+**Создано (1 файл):**
+- config/CuttingData.java (record): cuttingSpeedMPerMin, feedMmPerRev, depthOfCutMm, toolLifeMin
+
+**Правки (2 файла):**
+- config/MachiningProperties.java: +cuttingData (Map<material, Map<method, CuttingData>>) + lookup + DEFAULT_CUTTING_DATA + TYPICAL_DEPTH. getCuttingSpeed/Feed — lookup по (material, method), getToolLife — lookup по (material, method), getDepthOfCut — min(TYPICAL_DEPTH, allowance).
+- service/MachiningProcessService.java: getToolLife(method, geometry.getMaterial(), tool) — material теперь передаётся.
+
+**Справочник (5 материалов x 5 методов, V/S/t/T):**
+- steel-45, steel 20kh, alsi10mg, al-6061, stainless-304
+- MILLING/TURNING/DRILLING/BORING/GRINDING с разными V/S/t/T
+
+**Lookup-логика:** normalize (lowercase, trim) -> exact match -> substring match (в обе стороны) -> DEFAULT_CUTTING_DATA.
+
+**getDepthOfCut:** min(TYPICAL_DEPTH[method], allowance) — не больше припуска. Физически корректно (было max, что могло снять больше припуска).
+
+**Тесты (src/test/.../config/MachiningPropertiesTest.java, 8 тестов):**
+- steel45_milling, alSi10Mg_drilling, steel20Kh_substringMatch, unknownMaterial_fallbackToDefault, depthOfCut_limitedByAllowance, cuttingData_override, stainless304_grinding, cuttingTool_doesNotAffectLookup
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS, Tests run: 14 (6 GCodeValidatorTest + 8 MachiningPropertiesTest), Failures: 0
+- E2E (projectId=test-e2e-001, Steel-45, geo-test-123):
+  * MILLING: V=120/S=0.2/t=2/T=60 (не изменился — Steel-45 MILLING = дефолт)
+  * DRILLING: V=25/S=0.15/t=1/T=45 (изменились с 120/0.2/2/60)
+  * GRINDING: V=30/S=0.05/t=0.05/T=30 (изменились с 120/0.2/2/60)
+  * cnc_program: line_count=135, byte_size=3692 (было 3688 — Z-координаты короче из-за t=0.05), valid=true
+  * results: +1 (33->34)
+
+**Грабли:**
+- getDepthOfCut не принимает material — TYPICAL_DEPTH по методу, не по паре. Для точной глубины — отдельный метод с material (C.5.1b, опционально).
+- Map<MachiningMethod, CuttingData> в YAML — enum-ключи Spring парсит, но требует @ConfigurationProperties + setter. Не тестировали — отложено.
+- Нормализация материала: пробелы/дефисы/регистр. "Steel 20Kh (ГОСТ)" матчится с "steel 20kh" по substring.
+- getToolLife изначально был без material — тест alSi10Mg_drilling это поймал (DRILLING DEFAULT = 45, а AlSi10Mg DRILLING = 60). Сигнатура исправлена на (method, material, tool) в C.5.5-fix. Урок: если параметр физически влияет — передавать его сразу, не упрощать.
+
+**Что осталось:**
+- **C.5.1b (опционально):** YAML-override cuttingData (сейчас только в коде).
+- **C.3.10:** косметика (дубль G01, tool type DRILLING).
+- **C.2.1b:** реальный integration:8092.
+- **Тесты machining:** стратегии (MillingStrategy, DrillingStrategy), CncProgramService.
+- **Косметика OperationProgram** (отступы), Javadoc {@link GeometryClient}.
+- **iktk.orchestrator.results.queue** — 34 сообщения без consumer'а.

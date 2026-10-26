@@ -452,7 +452,7 @@ public class MachiningProcessService {
                             2, RoundingMode.HALF_UP);
         }
 
-        BigDecimal toolLife = properties.getToolLife(method, tool);
+        BigDecimal toolLife = properties.getToolLife(method, geometry.getMaterial(), tool);
 
         return CuttingMode.builder()
                 .cuttingSpeedMPerMin(v)
