@@ -96,7 +96,7 @@ public class MachiningApplication {
 
         Environment env = ctx.getEnvironment();
         String appName = env.getProperty("spring.application.name", "machining");
-        String port = env.getProperty("server.port", "8095");
+        String port = env.getProperty("server.port", "8096");
         String profile = String.join(",", env.getActiveProfiles());
         String queueCmd = env.getProperty(
                 "iktk.messaging.commands-queue", "iktk.machining.queue");

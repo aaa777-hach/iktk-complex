@@ -1680,3 +1680,37 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Маппинг `Map<String,Object>` → `GeometryData`** в `GeometryClient`: реальный `GeometryController` возвращает `Map`, Jackson десериализует в `GeometryData`. Если поля не совпадут — увидим на E2E.
 - **Реальные реализации** заглушек (`ToolpathGenerator`, `GCodeValidator`, `StorageClient`/MinIO, `MachiningProperties` — справочники).
 - **Тесты** `machining`.
+
+### Обновление 2026-10-26 (machining: E2E-окружение + stub Geometry)
+
+**Цель:** довести `machining` до состояния «можно запустить E2E». **Достигнуто (кроме самого прогона).**
+
+**Окружение (по факту):**
+- PostgreSQL 16 (`iktk-postgres`): `iktk_app / iktk_dev_password`, БД `iktk_machining` создана.
+- RabbitMQ 3.13 (`iktk-rabbitmq`): user `iktk`, pass `iktk_dev_password`, **vhost `/iktk`** (не `/`!).
+- Порты: `integration:8092` (up), `equipment:8094` (up), `norming:8095` (**занят**), `machining:8096` (свободен).
+
+**Правки `application.yml`:**
+- `server.port: 8096` (было 8095 — занят `NormingApplication`).
+- `datasource.username: iktk_app`, `password: iktk_dev_password`.
+- `spring.rabbitmq.username: iktk`, `password: iktk_dev_password`.
+- **`spring.rabbitmq.virtual-host: /iktk`** — ключевое отличие от forging (там `/`).
+
+**Правка `MachiningApplication.main`:** дефолт порта `8096`.
+
+**Создано (1 файл):**
+- `client/GeometryClientStub.java` (`@Component`): возвращает фиктивный `GeometryData` (Steel-45, complexityScore=3, holes=true).
+
+**Правка `client/GeometryClient.java`:** убран `@FeignClient`, оставлен интерфейс (метод `fetchGeometry` без `@GetMapping`).
+
+**Почему stub для Geometry (а не реальный Feign):**
+- Реальный `integration:8092` возвращает `Map<String,Object>`, а `GeometryData` — без no-arg конструктора и `@JsonCreator`. Jackson не десериализует. Реальный контракт — задача C-real.
+
+**Проверено:**
+- `mvn -pl modules/machining -am compile` → **BUILD SUCCESS**.
+- `mvn -pl modules/machining -am verify`  → **BUILD SUCCESS**.
+
+**Что осталось:**
+- **E2E-прогон** `machining`: `iktk.command.machining` → `PART_PROCESS_READY` → запись в `iktk_machining`.
+- **C-real:** реальные заглушки (`GeometryClient`, `EquipmentClient`, `ToolingClient`, `ToolpathGenerator`, `GCodeValidator`, `StorageClient`, `MachiningProperties`).
+- **Тесты** `machining`.

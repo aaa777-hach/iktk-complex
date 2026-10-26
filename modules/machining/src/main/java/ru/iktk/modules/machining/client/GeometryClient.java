@@ -1,19 +1,27 @@
 package ru.iktk.modules.machining.client;
 
-import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import ru.iktk.modules.machining.dto.GeometryData;
 
 /**
- * Feign-клиент к integration (CAD-геометрия).
- * Совпадает с forging/casting: GET /api/v1/geometry/{projectId}?objectRef=...
+ * Клиент к integration (CAD-геометрия).
+ *
+ * <p>Реальный endpoint {@code GET /api/v1/geometry/{projectId}?objectRef=...}
+ * существует и возвращает {@code Map<String,Object>}. Десериализация в
+ * {@link GeometryData} пока невозможна: у DTO нет no-arg конструктора и
+ * {@code @JsonCreator}, а структура JSON не зафиксирована. До C-real
+ * используется {@link GeometryClientStub}.
+ *
+ * <p>Когда контракт будет зафиксирован — заменить stub на {@code @FeignClient}:
+ * <pre>
+ * &#64;FeignClient(name = "integration", url = "${iktk.machining.integration.url:http://localhost:8092}")
+ * public interface GeometryClient {
+ *     &#64;GetMapping("/api/v1/geometry/{projectId}")
+ *     GeometryData fetchGeometry(&#64;PathVariable String projectId,
+ *                                &#64;RequestParam String objectRef);
+ * }
+ * </pre>
  */
-@FeignClient(name = "integration", url = "${iktk.machining.integration.url:http://localhost:8092}")
 public interface GeometryClient {
 
-    @GetMapping("/api/v1/geometry/{projectId}")
-    GeometryData fetchGeometry(@PathVariable("projectId") String projectId,
-                               @RequestParam("objectRef") String objectRef);
+    GeometryData fetchGeometry(String projectId, String objectRef);
 }

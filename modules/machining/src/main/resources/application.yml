@@ -1,13 +1,12 @@
 server:
-  port: 8095
-
+  port: 8096
 spring:
   application:
     name: machining
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/iktk_machining}
-    username: ${SPRING_DATASOURCE_USERNAME:iktk}
-    password: ${SPRING_DATASOURCE_PASSWORD:iktk}
+    username: ${SPRING_DATASOURCE_USERNAME:iktk_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:iktk_dev_password}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -23,8 +22,9 @@ spring:
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
-    username: ${SPRING_RABBITMQ_USERNAME:guest}
-    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    username: ${SPRING_RABBITMQ_USERNAME:iktk}
+    password: ${SPRING_RABBITMQ_PASSWORD:iktk_dev_password}
+    virtual-host: ${SPRING_RABBITMQ_VHOST:/iktk}
   cloud:
     openfeign:
       client:
