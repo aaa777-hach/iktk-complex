@@ -11,8 +11,11 @@ import ru.iktk.modules.machining.client.EquipmentClient;
 import ru.iktk.modules.machining.client.GeometryClient;
 import ru.iktk.modules.machining.client.ToolingClient;
 import ru.iktk.modules.machining.config.MachiningProperties;
+import ru.iktk.modules.machining.dto.GeometryData;
+import ru.iktk.modules.machining.dto.ManufacturabilityReport;
 import ru.iktk.modules.machining.dto.MachiningRequest;
 import ru.iktk.modules.machining.dto.MachiningResponse;
+import ru.iktk.modules.machining.dto.Setup;
 import ru.iktk.modules.machining.model.CuttingMode;
 import ru.iktk.modules.machining.model.CuttingTool;
 import ru.iktk.modules.machining.model.MachiningMethod;
@@ -533,124 +536,6 @@ public class MachiningProcessService {
     // Вспомогательные типы
     // ------------------------------------------------------------------
 
-    /** Данные геометрии, полученные из integration. */
-    public static class GeometryData {
-        private final String objectRef;
-        private final String material;
-        private final BigDecimal volume;
-        private final BigDecimal mass;
-        private final BigDecimal minInternalRadius;
-        private final BigDecimal minWallThickness;
-        private final BigDecimal maxHoleDepthRatio;
-        private final BigDecimal requiredAccuracy;
-        private final BigDecimal machiningAllowance;
-        private final int surfaceCount;
-        private final int complexityScore;
-        private final boolean undercuts;
-        private final boolean holes;
-        private final boolean precisionHoles;
-        private final boolean thinRibs;
 
-        public GeometryData(String objectRef, String material, BigDecimal volume,
-                            BigDecimal mass, BigDecimal minInternalRadius,
-                            BigDecimal minWallThickness, BigDecimal maxHoleDepthRatio,
-                            BigDecimal requiredAccuracy, BigDecimal machiningAllowance,
-                            int surfaceCount, int complexityScore, boolean undercuts,
-                            boolean holes, boolean precisionHoles, boolean thinRibs) {
-            this.objectRef = objectRef;
-            this.material = material;
-            this.volume = volume;
-            this.mass = mass;
-            this.minInternalRadius = minInternalRadius;
-            this.minWallThickness = minWallThickness;
-            this.maxHoleDepthRatio = maxHoleDepthRatio;
-            this.requiredAccuracy = requiredAccuracy;
-            this.machiningAllowance = machiningAllowance;
-            this.surfaceCount = surfaceCount;
-            this.complexityScore = complexityScore;
-            this.undercuts = undercuts;
-            this.holes = holes;
-            this.precisionHoles = precisionHoles;
-            this.thinRibs = thinRibs;
-        }
 
-        public String getObjectRef() { return objectRef; }
-        public String getMaterial() { return material; }
-        public BigDecimal getVolume() { return volume; }
-        public BigDecimal getMass() { return mass; }
-        public BigDecimal getMinInternalRadius() { return minInternalRadius; }
-        public BigDecimal getMinWallThickness() { return minWallThickness; }
-        public BigDecimal getMaxHoleDepthRatio() { return maxHoleDepthRatio; }
-        public BigDecimal getRequiredAccuracy() { return requiredAccuracy; }
-        public BigDecimal getMachiningAllowance() { return machiningAllowance; }
-        public int getSurfaceCount() { return surfaceCount; }
-        public int getComplexityScore() { return complexityScore; }
-        public boolean hasUndercuts() { return undercuts; }
-        public boolean hasHoles() { return holes; }
-        public boolean hasPrecisionHoles() { return precisionHoles; }
-        public boolean hasThinRibs() { return thinRibs; }
-    }
-
-    /** Отчёт о технологичности. */
-    public static class ManufacturabilityReport {
-        private final boolean passed;
-        private final List<String> issues;
-        private final List<String> warnings;
-
-        public ManufacturabilityReport(boolean passed,
-                                       List<String> issues,
-                                       List<String> warnings) {
-            this.passed = passed;
-            this.issues = issues == null ? List.of() : issues;
-            this.warnings = warnings == null ? List.of() : warnings;
-        }
-
-        public boolean isPassed() { return passed; }
-        public List<String> getIssues() { return issues; }
-        public List<String> getWarnings() { return warnings; }
-    }
-
-    /** Установ и схема базирования. */
-    public static class Setup {
-        private final int order;
-        private final String name;
-        private final String scheme;
-        private final List<String> fixtures;
-        private final List<String> surfaces;
-
-        private Setup(int order, String name, String scheme,
-                      List<String> fixtures, List<String> surfaces) {
-            this.order = order;
-            this.name = name;
-            this.scheme = scheme;
-            this.fixtures = fixtures == null ? List.of() : fixtures;
-            this.surfaces = surfaces == null ? List.of() : surfaces;
-        }
-
-        public int getOrder() { return order; }
-        public String getName() { return name; }
-        public String getScheme() { return scheme; }
-        public List<String> getFixtures() { return fixtures; }
-        public List<String> getSurfaces() { return surfaces; }
-
-        public static Builder builder() { return new Builder(); }
-
-        public static class Builder {
-            private int order;
-            private String name;
-            private String scheme;
-            private List<String> fixtures;
-            private List<String> surfaces;
-
-            public Builder order(int v) { this.order = v; return this; }
-            public Builder name(String v) { this.name = v; return this; }
-            public Builder scheme(String v) { this.scheme = v; return this; }
-            public Builder fixtures(List<String> v) { this.fixtures = v; return this; }
-            public Builder surfaces(List<String> v) { this.surfaces = v; return this; }
-
-            public Setup build() {
-                return new Setup(order, name, scheme, fixtures, surfaces);
-            }
-        }
-    }
 }

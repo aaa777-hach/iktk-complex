@@ -1535,3 +1535,86 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 **Что это доказывает:** вся система работает end-to-end — orchestrator, bom-service, casting, recommendation, assembly, norming, equipment, integration — через RabbitMQ, Feign, PostgreSQL, Flyway. **3 модуля** (bom, casting, norming) оставили реальные записи в своих БД.
 
 **Замечание по процессу:** в шагах 7-9 потребовался повторный `run` (assembly обрабатывал >3 сек) — это нормально для асинхронной архитектуры. `norming` отработал (запись в БД с реальными числами).
+
+### Обновление 2026-10-26 (forging: модуль компилируется и работает end-to-end)
+
+**Цель:** `forging` из «2 файла, не компилируется» → компилируется + работает end-to-end (как `norming`/`casting`). **Достигнуто.**
+
+**Создано (15 файлов, коммит `d205edc`):**
+- `model/` (5): `ForgingMethod` (enum), `BilletCalculation`, `ForgingTransition` (+ `TransitionType`), `ForgingTooling`, `ForgingProcess` (`@Entity`, JSONB для вложенных).
+- `dto/` (2): `ForgingRequest` (с `ProductionType`), `ForgingResponse`.
+- `repository/` (1): `ForgingProcessRepository` (`JpaRepository`).
+- `client/` (2): `GeometryClient` (Feign → `integration:8092`, возвращает `ForgingProcessService.GeometryData`), `EquipmentClient` (Feign → `equipment:8094`, `isMethodAvailable`).
+- `config/` (2): `ForgingProperties` (13 методов, справочные значения), `RabbitTopologyConfig` (`iktk.forging.queue`).
+- `messaging/` (1): `ForgingCommandConsumer` (`iktk.command.forging` → `designProcess` → `PART_PROCESS_READY` в `iktk.results`).
+- `application.yml` (порт **8093**, БД `iktk_forging`, integration 8092, equipment 8094), `V1__init.sql` (`forging_process`).
+- `ForgingApplication`: `@EntityScan("ru.iktk.modules.forging.model")` (грабли №8 — не тянуть `projects`).
+- `pom.xml`: `flyway-core` + `flyway-database-postgresql`.
+- Корневой `pom.xml`: `forging` раскомментирован (4-й модуль в reactor).
+
+**Правки (2):**
+- `ForgingProcess.method`: `String` → `ForgingMethod` (+ `@Enumerated(EnumType.STRING)`) — ошибка типов при компиляции.
+- `ForgingRequest.productionType`: `String` → `TechnologyProcess.ProductionType` — ошибка сравнения с enum.
+
+**Проверено end-to-end (`projectId=a097907a-...`):**
+- `iktk.command.forging` → `ForgingCommandConsumer` → `designProcess` (`objectRef=geo-12345` через `integration:8092`) → `HOT_DIE_FORGING`, `transitions=4`, `stages=8` → `PART_PROCESS_READY`.
+- **БД `iktk_forging`:** `project_id=a097907a-...`, `method=HOT_DIE_FORGING`, `object_ref=geo-12345`.
+- **`mvn -pl modules/forging -am verify`** → **BUILD SUCCESS** (forging без тестов, jacoco skip).
+
+**Грабли (важно, в этой сессии):**
+- **`Resolve-Path` молча оставляет `$p` от предыдущей команды**, если путь не найден (в отличие от `cd`). Результат: SQL-миграция `V1__init.sql` записалась в `ForgingRequest.java` (из-за `$base = null` → `Join-Path` упал → `$p` остался от прошлой команды). Решение: создавать папки `-Force` **до** `Resolve-Path`, проверять `$p` перед `WriteAllLines`.
+
+**Что осталось:**
+- **`machining`** — 3 файла (1334 строки логики), **21 класс** (сложнее `forging`): `CncProgramService`, `ToolpathGenerator`, `PostprocessorRegistry`, `GCodeValidator` и др. Отдельная сессия.
+- **Тесты** `bom-service`/`integration`/`norming`/`casting`/`forging` + Javadoc.
+- **Реальные справочники** `NormingProperties`/`ForgingProperties`.
+- **`integration`** — многоуровневая сборка (не «1 геометрия = 1 деталь»).
+
+### Обновление 2026-10-26 (machining: модуль компилируется, BUILD SUCCESS)
+
+**Цель:** `machining` из «3 файла, не компилируется» → **BUILD SUCCESS** (как `forging`). **Достигнуто.**
+
+**Создано (30 файлов + правки):**
+- `model/` (6): `MachiningMethod` (enum), `MachiningProcess` (`@Entity`, JSONB), `MachiningOperation`, `CuttingTool`, `CuttingMode`, `CncProgram` (`@Entity`, JSONB).
+- `dto/` (7): `MachiningRequest`, `MachiningResponse`, `CncProgramRequest`, `CncProgramResponse`, `GeometryData`, `ManufacturabilityReport`, `Setup`, `EquipmentInfo` — последние 4 извлечены из сервисов.
+- `repository/` (2): `MachiningProcessRepository`, `CncProgramRepository`.
+- `client/` (4): `GeometryClient` (Feign → `integration:8092`), `EquipmentClient` (Feign → `equipment:8094`), `ToolingClient` (Feign → `tooling:8096`), `StorageClient` (заглушка).
+- `config/` (2): `MachiningProperties` (14 методов, справочные заглушки), `RabbitTopologyConfig` (`iktk.machining.queue`).
+- `postprocessor/` (2): `Postprocessor` (интерфейс), `PostprocessorRegistry`.
+- `toolpath/` (3): `Toolpath`, `ToolpathPoint` (извлечены из CPS), `ToolpathGenerator` (заглушка).
+- `validator/` (2): `GCodeValidator` (заглушка), `ValidationResult` (извлечён из CPS).
+- `model/` (3 extracted): `OperationProgram`, `SetupSheet`, `ToolSpec`.
+
+**Извлечено 10 nested-классов** из `MachiningProcessService` и `CncProgramService` → отдельные файлы по пакетам. Это архитектурно необходимо: `GeometryClient`/`EquipmentClient` возвращают `GeometryData`/`EquipmentInfo`, `ToolpathGenerator` — `Toolpath`, `GCodeValidator` — `ValidationResult`.
+
+**Правки в существующем (3 файла):**
+- `MachiningApplication`: `+@EntityScan("ru.iktk.modules.machining.model")`, порт `"8095"` (было `"8092"`), очередь `"iktk.command.machining"` (было `"iktk.machining.queue"`).
+- `MachiningProcessService`: удалены 3 nested-класса, добавлены 3 импорта.
+- `CncProgramService`: удалены 7 nested-классов, добавлены 6 импортов.
+- `pom.xml` (корневой): раскомментирован `<module>modules/machining</module>`.
+
+**Правки типов (грабли forging №1–2):**
+- `MachiningMethod` — enum с `@Enumerated(EnumType.STRING)` в `MachiningProcess`.
+- `productionType` в DTO **не добавляли** — исходник его не использует; когда понадобится — сразу `TechnologyProcess.ProductionType`.
+
+**Исправлен 1 баг исходника:**
+- `CncProgramService:326` вызывал `op.getCuttingMode()` на `OperationProgram` (у которого был только `getMode()`). Добавлен alias `getCuttingMode()` в `OperationProgram`.
+
+**Проверено:**
+- `mvn -pl modules/machining -am compile` → **BUILD SUCCESS**.
+- `mvn -pl modules/machining -am verify` → **BUILD SUCCESS** (42.9 сек, тесты отсутствуют).
+
+**Грабли (в этой сессии):**
+- **`[System.IO.File]::WriteAllLines` с относительным путём** резолвит через `Directory.GetCurrentDirectory()` = `C:\WINDOWS\system32`, а не через `$PWD`. Поймали на A.6a: `WriteAllLines("modules\...\dto\X.java", ...)` → ошибка «путь не найден». Фикс: **всегда `Join-Path $root ...`**, где `$root = (Get-Location).Path`, с проверкой `Test-Path $root\pom.xml`.
+- **PowerShell и Java-код в одной консоли.** Вставка `enum MachiningMethod { ... }` или `for (OperationProgram op : xs)` в PS даёт `ParserError` (Java-синтаксис не парсится). Фикс: копировать **только блоки `# ====`**, объясняющий текст с Java — отдельно.
+- **`diff` (алиас `Compare-Object`) сравнивает имена, а не содержимое.** `diff f1 f2` → «есть f1, есть f2». Фикс: `Compare-Object (Get-Content f1) (Get-Content f2)` или `git diff --no-index`.
+- **Порядок удаления nested-классов из файла** — **от конца к началу**. Иначе индексы сдвигаются, и `Remove-NestedClass` удаляет не то (или падает).
+- **`$ErrorActionPreference = "Stop"` + `throw`** спасли при первом сбое A.6a: без них скрипт продолжил бы и оставил полу-состояние (часть файлов создана, часть — нет).
+
+**Что осталось:**
+- **E2E-запуск `machining`** (как `forging` в сессии 10): `iktk.command.machining` → `designProcess` → `PART_PROCESS_READY` → запись в `iktk_machining`.
+- **`machining` — реализовать заглушки:** `ToolpathGenerator`, `GCodeValidator`, `StorageClient` (MinIO), `MachiningProperties` (реальные справочники).
+- **Feign-контракты** — согласовать `@GetMapping` с реальными эндпоинтами `integration` / `equipment` / `tooling`.
+- **Тесты** `machining` (как `forging` — отдельная сессия).
+- **`machining` Messaging:** `MachiningCommandConsumer` (не создан в этой сессии; следующий шаг).
+- **`integration`** — многоуровневая сборка (не «1 геометрия = 1 деталь»).

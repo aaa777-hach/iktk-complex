@@ -10,6 +10,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import ru.iktk.modules.machining.config.MachiningProperties;
 
 import java.net.InetAddress;
@@ -80,6 +81,7 @@ import java.net.UnknownHostException;
         "ru.iktk.modules.machining",
         "ru.iktk.core"
 })
+@EntityScan("ru.iktk.modules.machining.model")
 @EnableAsync
 @EnableScheduling
 @EnableFeignClients(basePackages = "ru.iktk.modules.machining.client")
@@ -94,10 +96,10 @@ public class MachiningApplication {
 
         Environment env = ctx.getEnvironment();
         String appName = env.getProperty("spring.application.name", "machining");
-        String port = env.getProperty("server.port", "8092");
+        String port = env.getProperty("server.port", "8095");
         String profile = String.join(",", env.getActiveProfiles());
         String queueCmd = env.getProperty(
-                "iktk.messaging.commands-queue", "iktk.machining.queue");
+                "iktk.messaging.commands-queue", "iktk.command.machining");
         String queueRes = env.getProperty(
                 "iktk.messaging.results-queue", "iktk.results");
         String cncPostprocessor = env.getProperty(
