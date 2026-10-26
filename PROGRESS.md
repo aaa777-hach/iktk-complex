@@ -1793,3 +1793,44 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Косметика OperationProgram** (отступы, Javadoc на одной строке с import).
 - **Тесты** machining.
 - **iktk.orchestrator.results.queue** — 30 сообщений без consumer'а.
+
+### Обновление 2026-10-26 (C.2: GeometryClient + @JsonCreator + Router fallback)
+
+**Цель:** GeometryClient из заглушки -> реальный Feign + fallback на stub; GeometryData десериализуется из Map. **Достигнуто.**
+
+**Создано (1 файл):**
+- client/GeometryClientRouter.java (@Component): try Feign, fallback stub. Инъектится в MachiningProcessService.
+
+**Правки (4 файла):**
+- dto/GeometryData.java: @JsonCreator + @JsonProperty (15 арг), @JsonIgnoreProperties(ignoreUnknown=true), дефолты для 8 полей, отсутствующих в integration.Geometry.
+- client/GeometryClient.java: @FeignClient(name="integration", url="${iktk.machining.integration.url}"), GET /api/v1/geometry/{projectId}.
+- client/GeometryClientStub.java: убран implements GeometryClient (Ambiguous bean).
+- service/MachiningProcessService.java: inject GeometryClientRouter.
+
+**E2E-прогон (projectId=test-e2e-001, objectRef=geo-test-123, integration:8092 НЕ запущен):**
+- GeometryClientRouter: integration failed -> fallback to stub (в логе, до 15:52:12).
+- machining_process: id=6080b50e..., ops=6, passed=true.
+- cnc_program: id=d55eb660..., program_uri=s3://iktk/test-e2e-001/cnc/O_6080b50e..._CNC-DEFAULT_1793015532387.nc, line_count=20, byte_size=705.
+- StorageClient.uploadText OK: bytes=705 -> файл в MinIO.
+- results: +1 (30->31). success=true, cncProgramId=d55eb660-....
+
+**Проверено:**
+- mvn -pl modules/machining -am compile -> BUILD SUCCESS.
+- mvn -pl modules/machining -am verify -> BUILD SUCCESS.
+- E2E: routed=true, fallback сработал, success=true.
+
+**Наблюдения из лога (не блокеры, но зафиксировать):**
+- WARN "постпроцессор для модели CNC-DEFAULT не найден" — EquipmentClientStub возвращает model=CNC-DEFAULT, PostprocessorRegistry.find не находит, уходит в findByName("ISO6983"). Работает, но WARN каждый раз. Починить: либо EquipmentClientStub -> model=ISO6983, либо PostprocessorRegistry матчит по реальным моделям. Отложено.
+- WARN "пустая траектория для операции X" x5 — ToolpathGenerator STUB. Норма для C.2. Реальная генерация -> C.3.
+
+**Грабли (в этой сессии):**
+- **integration:8092 нужно поднять для проверки реального Feign.** Без него Router всегда уходит в stub, E2E-цифры не доказывают реальный Feign. C.2.1b (опционально) — поднять integration, вставить geo-12345 в iktk_geometry, E2E-retry. Ожидаемо: GeometryClientRouter -> integration OK (вместо fallback), 7 полей реальные, 8 — дефолты.
+- **GeometryClientStub без implements** — иначе Ambiguous bean с Feign-прокси. Запомнить для будущих Router'ов.
+- **Дефолты для отсутствующих полей** в @JsonCreator — временное решение. Когда integration расширит контракт, убрать дефолты (пусть null сигнализирует о пропуске).
+
+**Что осталось:**
+- **C.2.1b (опционально):** поднять integration:8092, geo-12345 (уже в iktk_geometry), E2E с реальным Feign.
+- **C.3-C.5:** ToolpathGenerator (реальная генерация), GCodeValidator (синтаксис/границы), MachiningProperties (справочники).
+- **Косметика:** OperationProgram (отступы), Javadoc {@link GeometryClient} в MachiningProcessService (ссылается на интерфейс, поле — Router).
+- **Тесты** machining.
+- **iktk.orchestrator.results.queue** — 31 сообщение без consumer'а.

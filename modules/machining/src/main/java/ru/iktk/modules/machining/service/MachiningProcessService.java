@@ -8,7 +8,7 @@ import ru.iktk.core.domain.Stage;
 import ru.iktk.core.domain.TechnologyProcess;
 import ru.iktk.core.exception.OrchestrationException;
 import ru.iktk.modules.machining.client.EquipmentClient;
-import ru.iktk.modules.machining.client.GeometryClient;
+import ru.iktk.modules.machining.client.GeometryClientRouter;
 import ru.iktk.modules.machining.client.ToolingClient;
 import ru.iktk.modules.machining.config.MachiningProperties;
 import ru.iktk.modules.machining.dto.GeometryData;
@@ -83,13 +83,13 @@ public class MachiningProcessService {
     private static final Logger log = LoggerFactory.getLogger(MachiningProcessService.class);
 
     private final MachiningProcessRepository repository;
-    private final GeometryClient geometryClient;
+    private final GeometryClientRouter geometryClient;
     private final EquipmentClient equipmentClient;
     private final ToolingClient toolingClient;
     private final MachiningProperties properties;
 
     public MachiningProcessService(MachiningProcessRepository repository,
-                                   GeometryClient geometryClient,
+                                   GeometryClientRouter geometryClient,
                                    EquipmentClient equipmentClient,
                                    ToolingClient toolingClient,
                                    MachiningProperties properties) {
