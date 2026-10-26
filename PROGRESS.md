@@ -1648,3 +1648,35 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **E2E-прогон** `machining`: `iktk.command.machining` → `PART_PROCESS_READY` → запись в `iktk_machining`.
 - **Реальные реализации** заглушек (`ToolpathGenerator`, `GCodeValidator`, `StorageClient`/MinIO, `MachiningProperties` — справочники).
 - **Тесты** `machining`.
+
+### Обновление 2026-10-26 (machining: Feign-контракты сверены со stub'ами)
+
+**Цель:** сверить Feign-клиенты `machining` с реальными эндпоинтами `integration`/`equipment`/`tooling`. **Достигнуто.**
+
+**Реальные эндпоинты (по факту):**
+- `integration`: `GET /api/v1/geometry/{projectId}?objectRef=` — **есть** (совпадает с forging/casting).
+- `equipment-service`: `GET /api/v1/equipment/is-method-available?projectId=&method=` → `boolean` — **есть**. `GET /api/v1/equipment/{id}` (получить станок) и `GET /api/v1/equipment/find` (найти доступное) — **НЕТ**.
+- `tooling`: **сервиса нет** (ни в `services/`, ни в `modules/`).
+
+**Правки (3 файла):**
+- `client/GeometryClient.java`: `@GetMapping("/api/v1/geometry/{projectId}")` с `@PathVariable projectId, @RequestParam objectRef` (было `/api/geometry/fetch?projectId=&objectRef=`). Feign остаётся, name = `integration`, url = `${iktk.machining.integration.url:http://localhost:8092}`.
+- `client/EquipmentClient.java`: убран `@FeignClient`, оставлен интерфейс (методы `getEquipment`, `findAvailable` без изменений).
+- `client/ToolingClient.java`: убран `@FeignClient`, оставлен интерфейс (метод `selectTool` без изменений).
+
+**Создано (2 файла, заглушки):**
+- `client/EquipmentClientStub.java` (`@Component`): `getEquipment` → фиктивный `EquipmentInfo` (model=CNC-DEFAULT, cncSystem=ISO6983, axes=3); `findAvailable` → `"EQ-" + method + (cnc ? "-CNC" : "")`.
+- `client/ToolingClientStub.java` (`@Component`): `selectTool` → фиктивный `CuttingTool` (END_MILL, ⌀10, HSS, TiAlN).
+
+**Правка `application.yml`:** убран `iktk.machining.tooling.url` (сервиса нет).
+
+**Проверено:**
+- `mvn -pl modules/machining -am compile` → **BUILD SUCCESS**.
+- `mvn -pl modules/machining -am verify`  → **BUILD SUCCESS**.
+
+**Что осталось:**
+- **E2E-прогон** `machining`: команда → `PART_PROCESS_READY` → запись в `iktk_machining`. Потребуется поднять RabbitMQ + PostgreSQL (`iktk_machining`).
+- **Когда появятся реальные эндпоинты** `equipment` для `{id}` и `find` — заменить `EquipmentClientStub` на `@FeignClient`.
+- **Когда появится сервис `tooling`** — заменить `ToolingClientStub` на `@FeignClient`.
+- **Маппинг `Map<String,Object>` → `GeometryData`** в `GeometryClient`: реальный `GeometryController` возвращает `Map`, Jackson десериализует в `GeometryData`. Если поля не совпадут — увидим на E2E.
+- **Реальные реализации** заглушек (`ToolpathGenerator`, `GCodeValidator`, `StorageClient`/MinIO, `MachiningProperties` — справочники).
+- **Тесты** `machining`.

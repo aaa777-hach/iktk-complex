@@ -48,8 +48,6 @@ iktk:
       url: ${IKTK_INTEGRATION_URL:http://localhost:8092}
     equipment:
       url: ${IKTK_EQUIPMENT_URL:http://localhost:8094}
-    tooling:
-      url: ${IKTK_TOOLING_URL:http://localhost:8096}
     storage:
       endpoint: ${IKTK_STORAGE_URL:http://localhost:9000}
       bucket: iktk

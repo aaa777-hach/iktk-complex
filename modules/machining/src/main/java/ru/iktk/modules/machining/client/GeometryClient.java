@@ -2,13 +2,18 @@ package ru.iktk.modules.machining.client;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import ru.iktk.modules.machining.dto.GeometryData;
 
-@FeignClient(name = "integration", url = "${iktk.machining.integration.url}")
+/**
+ * Feign-клиент к integration (CAD-геометрия).
+ * Совпадает с forging/casting: GET /api/v1/geometry/{projectId}?objectRef=...
+ */
+@FeignClient(name = "integration", url = "${iktk.machining.integration.url:http://localhost:8092}")
 public interface GeometryClient {
 
-    @GetMapping("/api/geometry/fetch")
-    GeometryData fetchGeometry(@RequestParam("projectId") String projectId,
+    @GetMapping("/api/v1/geometry/{projectId}")
+    GeometryData fetchGeometry(@PathVariable("projectId") String projectId,
                                @RequestParam("objectRef") String objectRef);
 }
