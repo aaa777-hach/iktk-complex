@@ -34,14 +34,18 @@ public class Iso6983Postprocessor implements Postprocessor {
         sb.append("; mode=").append(mode == null ? "-" : mode.getMethod()).append("\n");
         if (toolpath != null && toolpath.getPoints() != null && !toolpath.getPoints().isEmpty()) {
             for (ToolpathPoint p : toolpath.getPoints()) {
-                sb.append("G01 X").append(p.getX())
+                boolean rapid = "RAPID".equalsIgnoreCase(p.getType());
+                sb.append(rapid ? "G00" : "G01")
+                  .append(" X").append(p.getX())
                   .append(" Y").append(p.getY())
-                  .append(" Z").append(p.getZ())
-                  .append(" F").append(p.getFeed())
-                  .append("\n");
+                  .append(" Z").append(p.getZ());
+                if (!rapid && p.getFeed() != null) {
+                    sb.append(" F").append(p.getFeed());
+                }
+                sb.append("\n");
             }
         } else {
-            sb.append("; toolpath empty (stub)\n");
+            sb.append("; toolpath empty\n");
         }
         log.debug("Iso6983Postprocessor.process: points={}",
                 toolpath == null || toolpath.getPoints() == null ? 0 : toolpath.getPoints().size());

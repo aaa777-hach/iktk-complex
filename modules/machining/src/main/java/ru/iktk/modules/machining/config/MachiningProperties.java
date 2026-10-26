@@ -22,6 +22,9 @@ public class MachiningProperties {
     private BigDecimal maxHoleDepthRatio = BigDecimal.valueOf(10.0);
     private BigDecimal maxAccuracy = BigDecimal.valueOf(0.02);
     private BigDecimal grindingThreshold = BigDecimal.valueOf(0.01);
+    private BigDecimal blankLength = BigDecimal.valueOf(100);
+    private BigDecimal blankWidth = BigDecimal.valueOf(100);
+    private BigDecimal blankHeight = BigDecimal.valueOf(20);
 
     private Cnc cnc = new Cnc();
 
@@ -42,6 +45,12 @@ public class MachiningProperties {
     public void setMaxAccuracy(BigDecimal v) { this.maxAccuracy = v; }
 
     public BigDecimal getGrindingThreshold() { return grindingThreshold; }
+    public BigDecimal getBlankLength() { return blankLength; }
+    public void setBlankLength(BigDecimal v) { this.blankLength = v; }
+    public BigDecimal getBlankWidth() { return blankWidth; }
+    public void setBlankWidth(BigDecimal v) { this.blankWidth = v; }
+    public BigDecimal getBlankHeight() { return blankHeight; }
+    public void setBlankHeight(BigDecimal v) { this.blankHeight = v; }
     public void setGrindingThreshold(BigDecimal v) { this.grindingThreshold = v; }
 
     public Cnc getCnc() { return cnc; }

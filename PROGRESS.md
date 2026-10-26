@@ -1834,3 +1834,48 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Косметика:** OperationProgram (отступы), Javadoc {@link GeometryClient} в MachiningProcessService (ссылается на интерфейс, поле — Router).
 - **Тесты** machining.
 - **iktk.orchestrator.results.queue** — 31 сообщение без consumer'а.
+
+### Обновление 2026-10-26 (C.3: ToolpathGenerator — реальная генерация)
+
+**Цель:** ToolpathGenerator из заглушки -> реальные Toolpath через стратегии. **Достигнуто.**
+
+**Создано (4 файла):**
+- toolpath/ToolpathStrategy.java (interface): supports(MachiningMethod), generate(op, equipment, properties)
+- toolpath/MillingStrategy.java (@Component): зигзаг по заготовке, шаг 0.7*диаметр, G00 подвод, G01 зигзаг
+- toolpath/DrillingStrategy.java (@Component): сетка 2x2 отверстий (1/3, 2/3 от L/W), G00-G01-G00 на отверстие
+- toolpath/FallbackStrategy.java (без @Component): пустой Toolpath для CONTROL/GRINDING/EDM/LASER
+
+**Правки (3 файла):**
+- toolpath/ToolpathGenerator.java: router — выбирает первую подходящую стратегию, fallback при отсутствии
+- config/MachiningProperties.java: +blankLength/blankWidth/blankHeight (100x100x20) + геттеры/сеттеры
+- postprocessor/Iso6983Postprocessor.java: RAPID->G00 (без F), FEED->G01 (с F), убрано "toolpath empty (stub)"
+
+**E2E-прогон (projectId=test-e2e-001, objectRef=geo-test-123, integration не запущен, Router -> stub):**
+- ToolpathGenerator: зарегистрировано 2 стратегий (Milling + Drilling), FallbackStrategy отдельно
+- MILLING: G00 X0 Y0 Z0 -> G01 X0 Y0 Z-2 F0.2 -> зигзаг X0..X100, Y0..Y98 шаг 7
+- DRILLING: 4 отверстия (33.33/66.67 по X/Y), G00-G01-G00 на каждое
+- GRINDING: FallbackStrategy, пустая траектория (ветка "траектория не сгенерирована")
+- cnc_program: line_count=135 (было 20), byte_size=3688 (было 705)
+- results: +1 (31->32), success=true
+
+**Проверено:**
+- mvn -pl modules/machining -am compile -> BUILD SUCCESS
+- mvn -pl modules/machining -am verify -> BUILD SUCCESS
+- E2E: toolpath реальный, RAPID/FEED корректно, координаты правильные
+
+**Наблюдения (не блокеры):**
+- **Дубль G01 X0 Y0 Z-2 F0.2 в начале MILLING** — подвод + первая точка зигзага (y=0). Косметика, не влияет на корректность. Убрать в C.3.10: в MillingStrategy не добавлять подвод отдельно, если первая точка зигзага совпадает.
+- **`; tool=END_MILL` для DRILLING** — ToolingClientStub.selectTool всегда возвращает END_MILL. Исправится, когда ToolingClient станет реальным (C.5 или отдельно).
+
+**Грабли (в этой сессии):**
+- **PowerShell: `Format-Table` съедает предыдущие строки** — в выводе C.3.1-C.3.6 пропали блоки "MachiningProperties: blank" и "Iso6983: RAPID", хотя `git status` показал правки. Урок: после блока с `Format-Table` проверять статус через `git status`, а не только по промежуточным Write-Host.
+- **ToolpathStrategy без Spring-контекста в FallbackStrategy** — если бы FallbackStrategy был @Component, был бы Ambiguous bean с Milling/Drilling (все поддерживают какие-то методы). FallbackStrategy создаётся вручную в ToolpathGenerator.
+
+**Что осталось:**
+- **C.3.10 (косметика):** убрать дубль G01 в начале MILLING, добавить DrillingStrategy tool type.
+- **C.4:** GCodeValidator — реальная валидация (синтаксис, границы X/Y/Z, столкновения).
+- **C.5:** MachiningProperties — реальные справочники (скорости, подачи, стойкости).
+- **C.2.1b (опционально):** поднять integration:8092, E2E с реальным Feign.
+- **Косметика OperationProgram** (отступы), Javadoc {@link GeometryClient}.
+- **Тесты** machining.
+- **iktk.orchestrator.results.queue** — 32 сообщения без consumer'а.
