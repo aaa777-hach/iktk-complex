@@ -1,7 +1,6 @@
 package ru.iktk.modules.machining.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 import ru.iktk.modules.machining.dto.GeometryData;
 import ru.iktk.modules.machining.model.CuttingTool;
 import ru.iktk.modules.machining.model.MachiningMethod;
@@ -15,7 +14,6 @@ import java.util.List;
  * <p>Справочные значения — заглушки; реальные справочники подключаются
  * в отдельной сессии.
  */
-@Component
 @ConfigurationProperties(prefix = "iktk.machining")
 public class MachiningProperties {
 

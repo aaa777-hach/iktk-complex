@@ -1,5 +1,7 @@
 package ru.iktk.modules.machining.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.math.BigDecimal;
 
 /**
@@ -36,6 +38,7 @@ public class CuttingMode {
     /**
      * Краткое строковое представление режимов.
      */
+    @JsonIgnore
     public String getSummary() {
         return String.format("V=%s м/мин, S=%s мм/об, t=%s мм, n=%s об/мин, T=%s мин",
                 cuttingSpeedMPerMin, feedMmPerRev, depthOfCutMm,

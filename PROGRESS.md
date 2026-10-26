@@ -1714,3 +1714,45 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **E2E-прогон** `machining`: `iktk.command.machining` → `PART_PROCESS_READY` → запись в `iktk_machining`.
 - **C-real:** реальные заглушки (`GeometryClient`, `EquipmentClient`, `ToolingClient`, `ToolpathGenerator`, `GCodeValidator`, `StorageClient`, `MachiningProperties`).
 - **Тесты** `machining`.
+
+### Обновление 2026-10-26 (machining: E2E работает end-to-end)
+
+**Цель:** machining из "компилируется, но не запускается" -> **работает end-to-end** (как forging/casting/norming). **Достигнуто.**
+
+**Исправлено 3 бага (до E2E не доживали):**
+- **flyway в machining/pom.xml отсутствовал.** Hibernate validate падал на missing table [cnc_program], миграция не применялась. Добавлены flyway-core + flyway-database-postgresql. Flyway Successfully applied 1 migration (V1__init.sql).
+- **Двойной бин MachiningProperties** (@Component + @EnableConfigurationProperties). Spring падал с required a single bean, but 2 were found. Убран @Component из MachiningProperties.java - оставлен @EnableConfigurationProperties в MachiningApplication (идиоматичный паттерн).
+- **CuttingMode.getSummary() - вычисляемый getter.** Jackson при сериализации в JSONB писал summary: "...", при десериализации падал UnrecognizedPropertyException: Unrecognized field "summary". Поставлен @JsonIgnore на getSummary().
+
+**E2E-прогон (projectId=test-e2e-001, objectRef=geo-test-123):**
+- iktk.command.machining -> MachiningCommandConsumer -> designProcess -> PART_PROCESS_READY.
+- **БД iktk_machining:** machining_process.id=161d0f96-1818-477a-a95a-472b47210111, setups=2, operations=6, stages=6, passed=true.
+- **JSONB operations[0]:** order=1, designation=005, method=MILLING, cnc=true, equipmentId=EQ-MILLING-CNC, tool=(END_MILL, 10mm, HSS, TiAlN), cuttingMode.spindleSpeedRpm=3819.72 (n=1000*V/(pi*D)=3819.7).
+- **iktk.orchestrator.results.queue:** +1 (26->27->28).
+
+**Правки (3 файла):**
+- machining/pom.xml: flyway-core, flyway-database-postgresql.
+- MachiningProperties.java: убран @Component.
+- CuttingMode.java: @JsonIgnore на getSummary() + импорт.
+
+**Проверено:**
+- mvn -pl modules/machining -am compile -> BUILD SUCCESS.
+- mvn -pl modules/machining -am verify -> BUILD SUCCESS.
+- **machining запускается** (Started MachiningApplication, порт 8096, vhost /iktk).
+- **E2E:** routed=true, consumer обработал, БД записана, результат отправлен.
+
+**Грабли (в этой сессии):**
+- **$pid - read-only в PowerShell.** $pid = $conn.OwningProcess молча проваливается (при ErrorActionPreference=Continue), $pid остаётся PID текущего PowerShell -> Stop-Process -Id $pid убивает **само окно**. Фикс: $targetPid, $procId, $portPid. **Не использовать $pid, $host, $home, $error, $matches как имена переменных.**
+- **Ctrl+C в окне с mvn ... | Tee-Object** не останавливает Spring Boot (SIGINT идёт в Tee-Object). Запускать mvn spring-boot:run **без pipe** или закрывать окно целиком (X).
+- **mvn compile = SUCCESS != все файлы созданы** (из сессии D). Всегда Test-Path + git status после создающего блока.
+- **A.3 (5 файлов) не применялись в сессии A** - только A.3-fix. application.yml, V1__init.sql, RabbitTopologyConfig.java созданы в D-fix. Восстановлено, но впредь - явная проверка.
+- **Java-код в PowerShell -> ParserError.** Копировать только блоки # ====, объяснения - отдельно.
+- **[System.IO.File]::WriteAllLines с относительным путём** -> C:\WINDOWS\system32. Фикс: Join-Path $root ... с проверкой Test-Path $root\pom.xml.
+- **Кракозябры в JSONB** (UTF-8 читается как cp1251 при передаче через docker exec psql). В БД сохранено правильно, но в PowerShell-выводе отображается неверно. Не влияет на работу. Для UI: chcp 65001 + [Console]::OutputEncoding.
+
+**Что осталось:**
+- **C-real:** реальные заглушки (GeometryClient, EquipmentClient, ToolingClient, ToolpathGenerator, GCodeValidator, StorageClient/MinIO, MachiningProperties - реальные справочники).
+- **Тесты** machining (unit + integration, как в forging).
+- **Кодировка консоли** - для корректного отображения кириллицы в JSONB.
+- **iktk.orchestrator.results.queue** - 28 сообщений без consumerа (orchestrator остановлен). Разобрать/перезапустить orchestrator.
+- **machining** - Feign-контракты EquipmentClient/ToolingClient - когда появятся реальные сервисы.
