@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: forging
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:iktk}
+    password: ${RABBITMQ_PASSWORD:iktk_dev_password}
+    virtual-host: ${RABBITMQ_VHOST:/iktk}
+    listener:
+      simple:
+        missing-queues-fatal: false
+  datasource:
+    url: ${FORGING_DB_URL:jdbc:postgresql://localhost:5432/iktk_forging}
+    username: ${FORGING_DB_USER:iktk_app}
+    password: ${FORGING_DB_PASSWORD:iktk_dev_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+iktk:
+  messaging:
+    commands-exchange: iktk.commands
+    routing-prefix: iktk.command
+    commands-queue: iktk.forging.queue
+    results-exchange: iktk.results
+    results-queue: iktk.orchestrator.results.queue
+  integration:
+    url: ${INTEGRATION_URL:http://localhost:8092}
+  equipment:
+    url: ${EQUIPMENT_URL:http://localhost:8094}
+  forging:
+    demo-fallback: true
+
+server:
+  port: 8093
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

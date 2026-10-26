@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -72,6 +73,7 @@ import java.net.UnknownHostException;
  *   <li>{@link EnableConfigurationProperties} — типизированные настройки.</li>
  * </ul>
  */
+@EntityScan(basePackages = "ru.iktk.modules.forging.model")
 @SpringBootApplication(scanBasePackages = {
         "ru.iktk.modules.forging",
         "ru.iktk.core"

@@ -31,7 +31,7 @@
     <module>orchestrator</module>
     <module>modules/casting</module>
         <module>modules/integration</module>
-    <!-- <module>modules/forging</module> -->
+    <module>modules/forging</module>
     <!-- <module>modules/machining</module> -->
     <module>modules/norming</module>
 
