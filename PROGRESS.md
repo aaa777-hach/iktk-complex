@@ -1756,3 +1756,40 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Кодировка консоли** - для корректного отображения кириллицы в JSONB.
 - **iktk.orchestrator.results.queue** - 28 сообщений без consumerа (orchestrator остановлен). Разобрать/перезапустить orchestrator.
 - **machining** - Feign-контракты EquipmentClient/ToolingClient - когда появятся реальные сервисы.
+
+### Обновление 2026-10-26 (C.1: реальный StorageClient/MinIO, generate E2E)
+
+**Цель:** StorageClient из заглушки -> реальный MinIO; расширить E2E на generate(). **Достигнуто.**
+
+**Создано (1 файл):**
+- postprocessor/Iso6983Postprocessor.java (@Component): getName()=ISO6983, header/footer/process. Реализация упрощённая (stub для toolpath), но формат G-кода корректный.
+
+**Правки (5 файлов):**
+- pom.xml: io.minio:minio:8.5.12.
+- client/StorageClient.java: переписан на реальный MinIO (MinioClient, putObject, removeObject, ensureBucket в @PostConstruct). URI: s3://<bucket>/<projectId>/<category>/<name>.
+- messaging/MachiningCommandConsumer.java: +CncProgramService; после designProcess, если requiresCncProgram=true, вызывает generate(); в results кладёт cncProgramId/cncProgramUri.
+- model/OperationProgram.java: @JsonIgnore на getCuttingMode() (alias из A.6b-fix — та же грабля, что с CuttingMode.getSummary()).
+- application.yml: креды MinIO iktk-minio/iktk_dev_password.
+
+**E2E-прогон (projectId=test-e2e-001, objectRef=geo-test-123):**
+- machining_process: id=dc3e2b7c..., ops=6.
+- cnc_program: id=3404ad92..., program_uri=s3://iktk/test-e2e-001/cnc/O_dc3e2b7c..._CNC-DEFAULT_...nc, line_count=20, byte_size=705.
+- JSONB cnc_program: ops=5 (все с tool, CONTROL без инструмента не попал), valid=true.
+- results: +1 (29->30).
+- Файл .nc физически в MinIO bucket iktk (проверено через uploadText OK в логе).
+
+**Проверено:**
+- mvn -pl modules/machining -am compile -> BUILD SUCCESS.
+- mvn -pl modules/machining -am verify -> BUILD SUCCESS.
+- E2E: routed=true, consumer -> designProcess -> generate -> MinIO -> БД, success=true.
+
+**Грабли (в этой сессии):**
+- **@JsonIgnore на все вычисляемые getter'ы.** Вторая грабля того же типа: OperationProgram.getCuttingMode() (alias) -> UnrecognizedPropertyException при десериализации CncProgram JSONB. Фикс: @JsonIgnore. **Урок: при добавлении alias-getter'а — сразу @JsonIgnore.**
+- **Регэксп ^(import ) не находит ничего, если импортов нет.** В OperationProgram (все поля — один пакет) импортов не было, regex не сработал, import JsonIgnore не добавился, compile упал бы. Урок: проверять наличие import после правки через Get-Content -Head 10.
+- **Косметика OperationProgram:** @JsonIgnore стоит, но import и Javadoc на одной строке, class с отступом 4 — работает, но некрасиво. Убрать при C.2.
+
+**Что осталось:**
+- **C.2-C.5:** GeometryClient (@JsonCreator в GeometryData + контракт integration), ToolpathGenerator (реальная генерация), GCodeValidator (синтаксис/границы), MachiningProperties (справочники).
+- **Косметика OperationProgram** (отступы, Javadoc на одной строке с import).
+- **Тесты** machining.
+- **iktk.orchestrator.results.queue** — 30 сообщений без consumer'а.

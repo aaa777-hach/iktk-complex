@@ -1,6 +1,8 @@
 package ru.iktk.modules.machining.model;
 
-    /** Программа по одной операции. */
+    
+
+import com.fasterxml.jackson.annotation.JsonIgnore;/** Программа по одной операции. */
     public class OperationProgram {
         private final int order;
         private final String name;
@@ -34,7 +36,8 @@ package ru.iktk.modules.machining.model;
         /**
  * Alias для getMode(): режимы резания операции.
  */
-public CuttingMode getCuttingMode() {
+    @JsonIgnore
+    public CuttingMode getCuttingMode() {
     return mode;
 }
     public MachiningOperation toOperation() {

@@ -10,8 +10,11 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
+import ru.iktk.modules.machining.dto.CncProgramRequest;
+import ru.iktk.modules.machining.dto.CncProgramResponse;
 import ru.iktk.modules.machining.dto.MachiningRequest;
 import ru.iktk.modules.machining.dto.MachiningResponse;
+import ru.iktk.modules.machining.service.CncProgramService;
 import ru.iktk.modules.machining.service.MachiningProcessService;
 
 import java.util.HashMap;
@@ -19,7 +22,16 @@ import java.util.Map;
 
 /**
  * Consumer команд оркестратора для модуля механообработки.
- * Вход: iktk.machining.queue, выход: iktk.results (PART_PROCESS_READY).
+ *
+ * <p>Вход: {@code iktk.machining.queue} (routing key {@code iktk.command.machining}).
+ * Выход: {@code iktk.results} (routing key {@code iktk.result.machining}, event {@code PART_PROCESS_READY}).
+ *
+ * <p>Сценарий:
+ * <ol>
+ *   <li>{@code designProcess} — проектирование ТП (machining_process).</li>
+ *   <li>Если {@code requiresCncProgram=true} — {@code generate} — генерация УП (cnc_program + MinIO).</li>
+ *   <li>Результат в {@code iktk.results}.</li>
+ * </ol>
  */
 @Component
 public class MachiningCommandConsumer {
@@ -32,13 +44,16 @@ public class MachiningCommandConsumer {
     private static final String MODULE_NAME = "machining";
 
     private final MachiningProcessService machiningProcessService;
+    private final CncProgramService cncProgramService;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
 
     public MachiningCommandConsumer(MachiningProcessService machiningProcessService,
+                                    CncProgramService cncProgramService,
                                     RabbitTemplate rabbitTemplate,
                                     ObjectMapper objectMapper) {
         this.machiningProcessService = machiningProcessService;
+        this.cncProgramService = cncProgramService;
         this.rabbitTemplate = rabbitTemplate;
         this.objectMapper = objectMapper;
     }
@@ -64,27 +79,45 @@ public class MachiningCommandConsumer {
             log.info("MachiningCommandConsumer: processing projectId={}, objectRef={}",
                     projectId, objectRef);
 
+            // 1. Проектирование ТП
             MachiningRequest request = MachiningRequest.builder()
                     .projectId(projectId)
                     .objectRef(objectRef)
                     .build();
-
             MachiningResponse response = machiningProcessService.designProcess(request);
 
             int operations = response.getOperations() == null ? 0 : response.getOperations().size();
             log.info("MachiningCommandConsumer: process designed, processId={}, operations={}, requiresCnc={}",
                     response.getProcessId(), operations, response.isRequiresCncProgram());
 
-            sendResult(projectId, response, correlationId, true, null);
+            // 2. Генерация УП (если требуется)
+            String cncProgramId = null;
+            String cncProgramUri = null;
+            if (response.isRequiresCncProgram()) {
+                CncProgramRequest cncReq = CncProgramRequest.builder()
+                        .projectId(projectId)
+                        .processId(response.getProcessId())
+                        .operations(response.getOperations())
+                        .build();
+                CncProgramResponse cncResp = cncProgramService.generate(cncReq);
+                cncProgramId = cncResp.getProgramId();
+                cncProgramUri = cncResp.getProgramUri();
+                log.info("MachiningCommandConsumer: cnc program generated, programId={}, uri={}",
+                        cncProgramId, cncProgramUri);
+            }
+
+            // 3. Результат
+            sendResult(projectId, response, cncProgramId, cncProgramUri, correlationId, true, null);
 
         } catch (Exception e) {
             log.error("MachiningCommandConsumer: processing error, projectId={}", projectId, e);
-            sendResult(projectId, null, correlationId, false, e.getMessage());
+            sendResult(projectId, null, null, null, correlationId, false, e.getMessage());
         }
     }
 
-    private void sendResult(String projectId, MachiningResponse response, String correlationId,
-                            boolean success, String errorMessage) {
+    private void sendResult(String projectId, MachiningResponse response,
+                            String cncProgramId, String cncProgramUri,
+                            String correlationId, boolean success, String errorMessage) {
         if (projectId == null) {
             log.error("MachiningCommandConsumer: projectId missing, cannot send result");
             return;
@@ -103,6 +136,10 @@ public class MachiningCommandConsumer {
                         ? 0 : response.getOperations().size());
                 payload.put("stages", response.getStages() == null
                         ? 0 : response.getStages().size());
+                if (cncProgramId != null) {
+                    payload.put("cncProgramId", cncProgramId);
+                    payload.put("cncProgramUri", cncProgramUri);
+                }
             } else {
                 payload.put("error", errorMessage == null ? "unknown" : errorMessage);
             }
@@ -123,7 +160,8 @@ public class MachiningCommandConsumer {
                         return message;
                     }
             );
-            log.info("MachiningCommandConsumer: result sent, projectId={}, success={}", projectId, success);
+            log.info("MachiningCommandConsumer: result sent, projectId={}, success={}, cncProgramId={}",
+                    projectId, success, cncProgramId);
         } catch (Exception e) {
             log.error("MachiningCommandConsumer: result send error, projectId={}", projectId, e);
         }

@@ -51,8 +51,8 @@ iktk:
     storage:
       endpoint: ${IKTK_STORAGE_URL:http://localhost:9000}
       bucket: iktk
-      access-key: ${IKTK_STORAGE_ACCESS_KEY:minioadmin}
-      secret-key: ${IKTK_STORAGE_SECRET_KEY:minioadmin}
+      access-key: ${IKTK_STORAGE_ACCESS_KEY:iktk-minio}
+      secret-key: ${IKTK_STORAGE_SECRET_KEY:iktk_dev_password}
     cnc:
       default-postprocessor: ISO6983
     min-internal-radius: 2.0
