@@ -2153,3 +2153,36 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Auth.4: тесты AbacService (471 строка).
 - Auth.5: gateway + JWT-фильтр.
 - permissions пусто (0), roles только ADMIN.
+
+### Обновление 2026-10-27 (Auth.2: E2E refresh / introspect / me / change-password)
+
+**Цель:** E2E-верификация 4 эндпоинтов auth. **Достигнуто.**
+
+**E2E-прогон (окно A, все зелёные):**
+- POST /api/v1/auth/login {admin, admin123} -> 200 (access, refresh, userId).
+- POST /api/v1/auth/refresh {refreshToken} -> 200: **ротация** (новая пара access + refresh), expiresIn=900, username=admin.
+- POST /api/v1/auth/introspect {token: valid} -> 200: {"active":true,"username":"admin","roles":["ADMIN"],"issuer":"iktk","expiresAt":...}.
+- POST /api/v1/auth/introspect {token: invalid} -> 200: {"active":false,"requestId":"..."}.
+- GET /api/v1/auth/me (X-User-Id + X-User-Roles) -> 200: userId, username, displayName, roles=[ADMIN].
+- GET /api/v1/auth/me без X-User-Id -> 401.
+- POST /api/v1/auth/change-password (X-User-Id, {oldPassword:admin123,newPassword:admin456}) -> 200: {"message":"Пароль изменён","status":"OK"}.
+- login admin/admin456 -> 200 (смена работает).
+- POST /api/v1/auth/change-password (admin456->admin123) -> 200 (возврат).
+- login admin/admin123 -> 200 (восстановлено).
+- audit_events: 6 записей за прогон — LOGIN x3, REFRESH_TOKEN x1, CHANGE_PASSWORD x2, все result=SUCCESS.
+
+**Правки:** 0 файлов. Только E2E-верификация.
+
+**Что нашли:**
+- JWT-ротация работает: refresh выдаёт НОВУЮ пару токенов (access + refresh).
+- introspect принимает и валидный, и невалидный токен (не падает, возвращает active=false).
+- me/changePassword — доверяют X-User-Id / X-User-Roles (от gateway). Без заголовка -> 401/ошибка.
+- audit_events заполняется на LOGIN, REFRESH_TOKEN, CHANGE_PASSWORD (result=SUCCESS).
+- displayName в консоли — кракозябры (cp1251), в БД — UTF-8 ("Администратор").
+
+**Что осталось:**
+- Auth.3: тесты AuthService, TokenService, RbacService.
+- Auth.4: тесты AbacService (471 строка, самая сложная логика).
+- Auth.5: интеграция с gateway (JWT-фильтр).
+- permissions пусто (0), roles только ADMIN (6 остальных: MANAGER, ENGINEER, NORMER, OPERATOR, VIEWER, INTEGRATION).
+- Seed permissions + role_permissions — отдельная задача (для RBAC/ABAC).
