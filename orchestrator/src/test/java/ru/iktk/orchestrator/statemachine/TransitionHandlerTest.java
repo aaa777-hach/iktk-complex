@@ -48,7 +48,7 @@ class TransitionHandlerTest {
         assertThat(handler.nextAuto(ProjectState.PROJECT_INIT)).isEqualTo(ProjectEvent.START_GEOMETRY_INPUT);
         assertThat(handler.nextAuto(ProjectState.GEOMETRY_INPUT)).isEqualTo(ProjectEvent.GEOMETRY_UPLOADED);
         assertThat(handler.nextAuto(ProjectState.GEOMETRY_ANALYSIS)).isEqualTo(ProjectEvent.IS_PART);
-        assertThat(handler.nextAuto(ProjectState.ASSEMBLY_ANALYSIS)).isEqualTo(ProjectEvent.BOM_EXTRACTED);
+        assertThat(handler.nextAuto(ProjectState.ASSEMBLY_ANALYSIS)).isNull(); // external BOM_EXTRACTED from bom-service
         assertThat(handler.nextAuto(ProjectState.EQUIPMENT_MATCHING)).isNull();
         assertThat(handler.nextAuto(ProjectState.EQUIPMENT_GAP_RESOLUTION)).isNull();
         assertThat(handler.nextAuto(ProjectState.NORMING)).isNull(); // точка контроля, ждём модуль
@@ -69,7 +69,7 @@ class TransitionHandlerTest {
     @Test
     @DisplayName("nextOnApprove: точки контроля -> соответствующие события approve")
     void nextOnApprove_pointOfControl() {
-        assertThat(handler.nextOnApprove(ProjectState.PART_PROCESS_PLANNING)).isEqualTo(ProjectEvent.PART_PROCESS_READY);
+        assertThat(handler.nextOnApprove(ProjectState.PART_PROCESS_PLANNING)).isNull(); // external PART_PROCESS_READY from casting
         assertThat(handler.nextOnApprove(ProjectState.TOOLING_DESIGN)).isEqualTo(ProjectEvent.TOOLING_READY);
         assertThat(handler.nextOnApprove(ProjectState.RECOMMENDATION_REVIEW)).isEqualTo(ProjectEvent.RECOMMENDATION_ACCEPTED);
         assertThat(handler.nextOnApprove(ProjectState.ASSEMBLY_PROCESS_PLANNING)).isEqualTo(ProjectEvent.ASSEMBLY_PROCESS_READY);

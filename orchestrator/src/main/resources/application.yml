@@ -1,21 +1,52 @@
 spring:
   application:
     name: orchestrator
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/iktk_orchestrator}
+    username: ${SPRING_DATASOURCE_USERNAME:iktk_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:iktk_dev_password}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
-    listener:
-      simple:
-        default-requeue-rejected: false
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:iktk}
     password: ${RABBITMQ_PASSWORD:iktk_dev_password}
     virtual-host: ${RABBITMQ_VHOST:/iktk}
+    listener:
+      simple:
+        missing-queues-fatal: false
+        default-requeue-rejected: false
 
 iktk:
   messaging:
     commands-exchange: iktk.commands
     routing-prefix: iktk.command
+    results-exchange: iktk.results
     results-queue: iktk.orchestrator.results.queue
+    dlq: iktk.orchestrator.results.dlq
+  security:
+    jwt:
+      secret: ${IKTK_JWT_SECRET:iktk-dev-secret-change-in-production-at-least-32-chars-long-0123456789}
+      issuer: ${IKTK_JWT_ISSUER:iktk}
 
 server:
   port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
