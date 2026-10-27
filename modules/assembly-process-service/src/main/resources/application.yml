@@ -10,6 +10,7 @@ spring:
     listener:
       simple:
         missing-queues-fatal: false
+        default-requeue-rejected: false
   datasource:
     url: ${ASSEMBLY_DB_URL:jdbc:postgresql://localhost:5432/iktk_assembly}
     username: ${ASSEMBLY_DB_USER:iktk_app}
@@ -35,7 +36,7 @@ iktk:
   equipment:
     url: ${EQUIPMENT_URL:http://localhost:8094}
   integration:
-    url: ${INTEGRATION_URL:http://localhost:8095}
+    url: ${INTEGRATION_URL:http://localhost:8092}
   messaging:
     commands-exchange: iktk.commands
     routing-prefix: iktk.command
