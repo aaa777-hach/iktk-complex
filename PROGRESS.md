@@ -2115,3 +2115,41 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **C.5.1b (опционально):** YAML-override cuttingData.
 - **machining:** 35 тестов, E2E, MinIO, Router, справочники, валидатор, стратегии. Готов.
 - **orchestrator:** на орбите, очередь пуста, DLQ-политика настроена.
+
+### Обновление 2026-10-27 (Auth.1: модуль auth запущен, login работает)
+
+**Цель:** auth из «не запускается» -> **login 200 + wrong 401**. **Достигнуто.**
+
+**Окружение:**
+- auth:8081 (PID 1840). Таблицы users / roles / permissions / audit_events / role_permissions / user_roles / role_inherited_roles + core (projects, stages, technology_processes) — УЖЕ были в БД.
+- JWT: jjwt, HS256, issuer=iktk, access TTL=PT15M, refresh TTL=P30D.
+- Admin seed: username=admin, roles=[ADMIN].
+
+**Создано (2 файла):**
+- auth/src/main/resources/application.yml: порт 8081, datasource iktk_auth (iktk_app/iktk_dev_password), ddl-auto=validate, iktk.security.jwt.{secret,issuer,access-ttl,refresh-ttl}, iktk.auth.{max-failed-attempts,lock-duration-minutes}.
+- auth/src/main/java/.../exception/GlobalExceptionHandler.java (@RestControllerAdvice): @ExceptionHandler(AuthException) -> ResponseEntity с httpStatus из исключения + body {timestamp, code, message, context}.
+
+**Правки (0 файлов):**
+- auth-logic не менялась. Только yml + handler.
+
+**Что нашли:**
+- AuthException extends RuntimeException, содержит httpStatus (401), code, context — но НЕ было @ControllerAdvice -> Spring отдавал 500 вместо 401.
+- Admin password_hash был $2y$10$5KA1nXTU (не от admin123) -> сбросили на $2a$10$x10DsH/z (admin123) через временный println + SQL UPDATE.
+- TokenService использует iktk.security.jwt.*, AuthProperties — iktk.auth.* (два разных префикса).
+
+**Проверено (E2E):**
+- POST /api/v1/auth/login {admin, admin123} -> 200: accessToken (sub=admin, roles=[ADMIN], exp=+900s), refreshToken (type=refresh, exp=+30d), expiresIn=900, userInfo.roles=[ADMIN].
+- POST /api/v1/auth/login {admin, wrong} -> 401: {"code":"INVALID_CREDENTIALS","message":"Неверный логин или пароль","context":{}} — доказывает GlobalExceptionHandler.
+
+**Грабли:**
+- $ErrorActionPreference="Stop" + git add + CRLF-warning -> падение (3-й раз). Для git: Continue + $LASTEXITCODE.
+- BCrypt $2y$-hash не матчится -> сброс через временный println encode("admin123") + SQL UPDATE.
+- GlobalExceptionHandler отсутствовал -> AuthException с httpStatus не читался.
+- AuthProperties (iktk.auth.*) и TokenService (iktk.security.jwt.*) — два префикса в yml.
+
+**Что осталось:**
+- Auth.2: refresh, introspect, me, change-password.
+- Auth.3: тесты AuthService, TokenService, RbacService.
+- Auth.4: тесты AbacService (471 строка).
+- Auth.5: gateway + JWT-фильтр.
+- permissions пусто (0), roles только ADMIN.

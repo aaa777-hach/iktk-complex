@@ -1,0 +1,46 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/iktk_auth}
+    username: ${SPRING_DATASOURCE_USERNAME:iktk_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:iktk_dev_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  jackson:
+    default-property-inclusion: non_null
+
+iktk:
+  security:
+    jwt:
+      secret: ${IKTK_JWT_SECRET:iktk-dev-secret-change-in-production-at-least-32-chars-long-0123456789}
+      issuer: ${IKTK_JWT_ISSUER:iktk}
+      access-ttl: ${IKTK_JWT_ACCESS_TTL:PT15M}
+      refresh-ttl: ${IKTK_JWT_REFRESH_TTL:P30D}
+  auth:
+    max-failed-attempts: ${IKTK_AUTH_MAX_FAILED_ATTEMPTS:5}
+    lock-duration-minutes: ${IKTK_AUTH_LOCK_DURATION_MINUTES:30}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  level:
+    ru.iktk.auth: INFO
+    org.springframework.security: INFO
