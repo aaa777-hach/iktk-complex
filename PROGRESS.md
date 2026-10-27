@@ -12,7 +12,7 @@
 - **Тесты (verify):** orchestrator 103, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
 - **Не проверено / в работе:**
   - auth: Auth.5 gateway + JWT-фильтр
-  - norming: 0 тестов
+  - norming: 18 тестов (model), покрытие не считали
   - tooling-service: не существует (`machining` использует `ToolingClientStub`)
   - gateway: порт не подтверждён после переноса orchestrator на 8080
 - **Следующий шаг:** Auth.5 (gateway + JWT-фильтр) → Seed users с не-ADMIN ролями
