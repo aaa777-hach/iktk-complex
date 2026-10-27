@@ -45,9 +45,8 @@ public class MillingStrategy implements ToolpathStrategy {
                 op.getName(), L, W, depth, feed, step);
 
         List<ToolpathPoint> points = new ArrayList<>();
-        // подвод
+        // подвод (RAPID) — врезание даст первая точка зигзага при y=0
         points.add(pt(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "RAPID", null));
-        points.add(pt(BigDecimal.ZERO, BigDecimal.ZERO, depth.negate(), "FEED", feed));
 
         boolean forward = true;
         BigDecimal y = BigDecimal.ZERO;

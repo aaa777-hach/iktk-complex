@@ -70,7 +70,7 @@ import java.util.UUID;
  * <p><b>Взаимодействие:</b>
  * <ul>
  *   <li>получает команду от оркестратора;</li>
- *   <li>запрашивает геометрию через {@link GeometryClient};</li>
+ *   <li>запрашивает геометрию через {@link GeometryClientRouter};</li>
  *   <li>проверяет оборудование через {@link EquipmentClient};</li>
  *   <li>подбирает инструмент через {@link ToolingClient};</li>
  *   <li>сохраняет результат в {@link MachiningProcessRepository};</li>

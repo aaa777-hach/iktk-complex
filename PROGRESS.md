@@ -1964,3 +1964,34 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Тесты machining:** стратегии (MillingStrategy, DrillingStrategy), CncProgramService.
 - **Косметика OperationProgram** (отступы), Javadoc {@link GeometryClient}.
 - **iktk.orchestrator.results.queue** — 34 сообщения без consumer'а.
+
+### Обновление 2026-10-27 (C.3.10: косметика — дубль G01, tool type, отступы, Javadoc)
+
+**Цель:** закрыть 4 косметических пункта из «что осталось» C.3/C.2/C.5. **Достигнуто.**
+
+**Правки (4 файла):**
+- toolpath/MillingStrategy.java: убран дубль G01 (подвод + первая точка зигзага при y=0 совпадали). Теперь один RAPID-подвод, врезание даёт первая FEED-точка.
+- client/ToolingClientStub.java: type по методу — MILLING/BORING→END_MILL ⌀10 HSS TiAlN, DRILLING/REAMING→DRILL ⌀5 HSS TiN, TURNING→TURNING_TOOL Carbide, GRINDING→GRINDING_WHEEL ⌀200 Al2O3, EDM/LASER→EDM_WIRE ⌀0.3, CONTROL→null.
+- model/OperationProgram.java: переписан с чистыми отступами (import отдельно от Javadoc, class с отступом 0, поля/методы с 4). Логика не менялась.
+- service/MachiningProcessService.java: Javadoc {@link GeometryClient} → {@link GeometryClientRouter}.
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS
+- E2E (projectId=test-e2e-001, Steel-45):
+  * line_count: 135 -> 132 (-3 = 3 MILLING × 1 дубль G01)
+  * byte_size: 3692 -> 3605 (-87)
+  * valid=true (GCodeValidator не сломался)
+  * tool1=END_MILL (MILLING), tool2=DRILL (DRILLING), tool5=GRINDING_WHEEL (GRINDING)
+  * G-код DRILLING: "; tool=DRILL" (было "; tool=END_MILL")
+  * results: 34 -> 35
+
+**Грабли:**
+- Дубль G01 был «невидим» в C.3, потому что точки подвода и первой точки зигзага при y=0 совпадали (обе X=0 Y=0 Z=-depth). Валидатор пропускал (обе строки валидны), E2E проходил — но G-код содержал лишнюю строку.
+- ToolingClientStub с END_MILL для DRILLING давал некорректный комментарий в G-коде. Не влияло на координаты, но визуально сбивало.
+
+**Что осталось:**
+- **C.2.1b:** поднять integration:8092, вставить данные в iktk_geometry, E2E с реальным Feign (не fallback).
+- **Тесты machining:** стратегии (MillingStrategy, DrillingStrategy), CncProgramService.
+- **C.5.1b (опционально):** YAML-override cuttingData.
+- **iktk.orchestrator.results.queue** — 35 сообщений без consumer'а.
