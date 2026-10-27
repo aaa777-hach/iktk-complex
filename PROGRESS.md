@@ -2186,3 +2186,35 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Auth.5: интеграция с gateway (JWT-фильтр).
 - permissions пусто (0), roles только ADMIN (6 остальных: MANAGER, ENGINEER, NORMER, OPERATOR, VIEWER, INTEGRATION).
 - Seed permissions + role_permissions — отдельная задача (для RBAC/ABAC).
+
+### Обновление 2026-10-27 (Auth.3: тесты TokenService, AuthService, RbacService — 39 тестов)
+
+**Цель:** покрыть тестами три сервиса auth. **Достигнуто.**
+
+**Создано (3 файла, 39 тестов):**
+- auth/src/test/java/.../service/TokenServiceTest.java (7): generateAccessToken (claims sub/iss/uid/type/roles/exp), generateRefreshToken (type=refresh), extractUsername, isValid (valid/garbage/empty/null), getAccessTtlSeconds, конструктор с коротким secret -> IllegalStateException, expired-токен -> invalid (TTL=1сек + sleep 1.5сек).
+- auth/src/test/java/.../service/AuthServiceTest.java (15): login_happyPath, login_null/missing/notFound/wrongPassword/lockedAfterMax/disabled/locked, refresh_happyPath (ротация), refresh_null/accessInsteadOfRefresh, changePassword_weak/wrongOld/happy/notFound.
+- auth/src/test/java/.../service/RbacServiceTest.java (17): hasRole_true/false, hasAnyRole, hasAllRoles, getUserRoles (known/unknown), getUserPermissions, hasPermission (true/false/blank), requirePermission (throws/ok), requireRole, roleInherits (same/direct/none/null).
+
+**Стратегия тестов:**
+- TokenServiceTest: реальный TokenService(secret, issuer, accessTtl, refreshTtl) — 4 аргумента, secret >= 32 символов.
+- AuthServiceTest: @Mock UserRepository; реальные BCryptPasswordEncoder(cost=4), TokenService, AuthProperties (defaults). 15 тестов.
+- RbacServiceTest: @Mock UserRepository, RoleRepository, PermissionRepository. 17 тестов. roleInherits через roleRepository.findByName + getInheritedRoles().
+- Mockito strict stubs: @ExtendWith(MockitoExtension.class).
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS, Tests run: 39 (7 + 15 + 17), Failures: 0, Errors: 0
+- AuthServiceTest: 5.861s (BCrypt cost=4 + one expired-token sleep).
+
+**Грабли:**
+- **Mockito strict stubs (UnnecessaryStubbingException):** в `refresh_accessTokenInsteadOfRefresh_throwsWrongType` был `when(userRepository.findByUsername("admin"))`, но AuthService.refresh падает на type!=refresh ДО findByUsername. Фикс: убрать when. Урок: stub только для того, что точно вызовется.
+- **BCrypt cost=4** — для тестов, чтобы 15 тестов с encode/matches не тормозили (production cost=10).
+- **Thread.sleep(1500)** в TokenServiceTest.expiredToken — 1.5 сек, допустимо для одного теста.
+- ReflectionTestUtils.setField — для User (поля private, но сеттеры есть — можно было через сеттеры, но reflection надёжнее для тех полей, что могут быть immutable).
+
+**Что осталось:**
+- Auth.4: тесты AbacService (471 строка, самая сложная логика — SubjectAttributes, ResourceAttributes, правила доступа).
+- Auth.5: gateway + JWT-фильтр.
+- permissions пусто (0), roles только ADMIN (6 остальных нет: MANAGER, ENGINEER, NORMER, OPERATOR, VIEWER, INTEGRATION).
+- Seed permissions + role_permissions — для полноценного RBAC/ABAC.
