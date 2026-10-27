@@ -1,0 +1,45 @@
+server:
+  port: 8085
+
+spring:
+  main:
+    allow-bean-definition-overriding: true
+
+  application:
+    name: gateway
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+iktk:
+  gateway:
+    auth-uri: ${AUTH_URI:http://localhost:8081}
+    orchestrator-uri: ${ORCHESTRATOR_URI:http://localhost:8080}
+    equipment-uri: ${EQUIPMENT_URI:http://localhost:8094}
+    bom-uri: ${BOM_URI:http://localhost:8091}
+    assembly-uri: ${ASSEMBLY_URI:http://localhost:8097}
+    recommendation-uri: ${RECOMMENDATION_URI:http://localhost:8098}
+    casting-uri: ${CASTING_URI:http://localhost:8090}
+    cors-allowed-origins:
+      - http://localhost
+      - http://localhost:80
+      - http://localhost:3000
+      - http://localhost:5173
+      - http://localhost:8085
+    rate-limit-replenish: 100
+    rate-limit-burst: 200
+
+  security:
+    jwt:
+      # ВАЖНО: должно совпадать с auth/application.yml (iktk.security.jwt.secret).
+      # В prod оба сервиса читают IKTK_JWT_SECRET из env.
+      secret: ${IKTK_JWT_SECRET:iktk-dev-secret-change-in-production-at-least-32-chars-long-0123456789}
+      issuer: ${IKTK_JWT_ISSUER:iktk}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
