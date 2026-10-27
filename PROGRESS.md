@@ -2286,3 +2286,37 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Auth.5: gateway + JWT-фильтр (gateway не настроен — yml, routes, фильтр).
 - Seed users с не-ADMIN ролями (для E2E MANAGER/ENGINEER/VIEWER).
 - UserRepository: findByUsernameOrEmail (для login) — уже покрыто.
+
+### Обновление 2026-10-27 (F: тесты forging — 34 теста)
+
+**Цель:** покрыть тестами модуль forging (0 тестов до этого). **Достигнуто.**
+
+**Создано (6 файлов, 34 теста):**
+- forging/src/test/.../model/ForgingMethodTest.java (4): values_5, valueOf, valueOf_unknown_throws, listOf.
+- forging/src/test/.../model/ForgingTransitionTest.java (4): builder, noArgs, allArgs, transitionType_6Values.
+- forging/src/test/.../model/ForgingToolingTest.java (3): builder, builderDefault, noArgsConstructor.
+- forging/src/test/.../model/BilletCalculationTest.java (2): builder, noArgsConstructor.
+- forging/src/test/.../service/ForgingProcessServiceTest.java (16): analyze (5: passed/issueFillet/issueWall/warningDraft/warnings), planTransitions (4: minimal4/complex5_drawing/holes_piercing/complex5AndHoles_6), calculateForces (2: perTransition/projectedArea), buildStages (2: hotDie_8/coldDie_7), designProcess (3: nullRequest/missingProjectId/geometryNull).
+- forging/src/test/.../messaging/ForgingCommandConsumerTest.java (5): onCommand happyPath/invalidJson/serviceThrows/defaultObjectRef/payloadObjectRef.
+
+**Логика forging (по коду):**
+- designProcess: validate -> fetchGeometry -> analyze -> selectForgingMethod -> calculateBillet -> planTransitions -> calculateForces -> designTooling -> buildStages -> save.
+- analyze: issues = minFilletRadius, minWallThickness; warnings = minDraftAngle, undercuts, thinRibs, heightToDiameterRatio; passed = issues.isEmpty.
+- planTransitions: UPSETTING + (DRAWING если complexity>3) + (PIERCING если hasHoles) + BLOCKING + FINISHING + TRIMMING = 4..6.
+- calculateForces: forceKn = yieldStrength * contactArea * coefficient / 1000.
+- buildStages: BLANK_PREPARATION + (HEAT_TREATMENT если HOT_DIE) + perTransition (TRIMMING/PIERCING -> MACHINING, иначе HOT_FORGING) + COLD_FORGING + TECHNICAL_CONTROL.
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS, Tests run: 34 (4+4+3+2+16+5), Failures: 0, Errors: 0
+
+**Грабли:**
+- Lombok @Getter @Setter БЕЗ @EqualsAndHashCode -> equals/hashCode = Object. Тесты equalsAndHashCode_lombok (3 шт) удалены — тестировали несуществующее.
+- RabbitTemplate.convertAndSend(String, String, Object, MessagePostProcessor) — 4-й аргумент MessagePostProcessor (Spring AMQP), НЕ java.util.function.Consumer. Заменено any(Consumer.class) -> any(MessagePostProcessor.class) в ForgingCommandConsumerTest (3 места).
+- ForgingProcessService nested-классы: GeometryData (16 полей, public ctor), ManufacturabilityReport (3 поля, public ctor), ForceCalculation (5 полей, private ctor + builder) — используются в JSONB @Entity ForgingProcess.
+
+**Что осталось:**
+- casting (0 тестов), norming (0 тестов) — аналогичная работа (1 сессия каждый).
+- auth: Auth.5 gateway, seed users с не-ADMIN ролями.
+- assembly-process-service: 5 тестов (есть), но 694 строки AssemblyProcessService — мало.
+- integration: многоуровневая сборка.
