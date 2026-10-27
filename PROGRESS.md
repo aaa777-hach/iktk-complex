@@ -2024,3 +2024,33 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Тесты machining:** стратегии (MillingStrategy, DrillingStrategy), CncProgramService.
 - **C.5.1b (опционально):** YAML-override cuttingData.
 - **iktk.orchestrator.results.queue** — 36 сообщений без consumer'а.
+
+### Обновление 2026-10-27 (T: тесты стратегий ToolpathGenerator)
+
+**Цель:** покрыть тестами MillingStrategy, DrillingStrategy, ToolpathGenerator. **Достигнуто.**
+
+**Создано (3 файла):**
+- src/test/.../toolpath/MillingStrategyTest.java (5 тестов): defaultBlank_zigzag_32points, customBlank_50x50_18points, nullTool_usesDefaultDiameter10_step7, depthFromCuttingMode, noDuplicateFeedAtOrigin_afterC310
+- src/test/.../toolpath/DrillingStrategyTest.java (3 теста): fourHoles_12points, holePattern_rapidFeedRapid, depthFromMode
+- src/test/.../toolpath/ToolpathGeneratorTest.java (4 теста): milling_routesToMillingStrategy, drilling_routesToDrillingStrategy, grinding_fallsBack_emptyToolpath, nullOperation_emptyToolpath
+
+**Что покрыто:**
+- MillingStrategy: L=W=100 -> 32 точки (1 RAPID + 30 FEED + 1 RAPID), L=W=50 -> 18 точек, step=0.7*диаметр (10 -> 7), X в {0,L}, все FEED на Z=-depth, RAPID подвод/отвод на Z=0, нет дубля FEED(0,0,-depth) после C.3.10, tool=null -> default ⌀10.
+- DrillingStrategy: 4 отверстия x 3 точки = 12, координаты (33.33, 66.67) x (33.33, 66.67) (L/3, 2L/3, W/3, 2W/3), структура RAPID-FEED-RAPID на отверстие, Z=0 у RAPID, Z=-depth у FEED.
+- ToolpathGenerator: MILLING -> MillingStrategy (не пусто), DRILLING -> DrillingStrategy (12 точек), GRINDING -> FallbackStrategy (пусто), op=null -> пустой Toolpath.
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS, Tests run: 26 (8 properties + 5 milling + 3 drilling + 4 generator + 6 validator), Failures: 0
+
+**Грабли:**
+- BigDecimal.equals vs compareTo: BigDecimal.valueOf(100).stripTrailingZeros() = 1E+2, BigDecimal.ZERO.stripTrailingZeros() = 0, оба корректны для containsExactlyInAnyOrder (использован stripTrailingZeros для нормализации).
+- В MillingStrategyTest noDuplicateFeedAtOrigin проверяет C.3.10-fix: было 2 FEED(0,0,-depth), стало 1.
+
+**Что осталось:**
+- **C.2.2 (опционально):** порог complexityScore > 2 vs >= 2 в planOperations.
+- **C.5.1b (опционально):** YAML-override cuttingData (сейчас только в коде).
+- **Тесты CncProgramService:** сервис generate (postprocessor, StorageClient, валидатор) — не покрыт. Отдельная сессия.
+- **iktk.orchestrator.results.queue** — 36 сообщений без consumer'а.
+- **machining**: тесты есть, E2E работает, MinIO, справочники, Router (Feign + fallback). Модуль готов к эксплуатации.
+
