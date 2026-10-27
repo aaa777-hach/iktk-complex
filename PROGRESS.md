@@ -1995,3 +1995,32 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Тесты machining:** стратегии (MillingStrategy, DrillingStrategy), CncProgramService.
 - **C.5.1b (опционально):** YAML-override cuttingData.
 - **iktk.orchestrator.results.queue** — 35 сообщений без consumer'а.
+
+### Обновление 2026-10-27 (C.2.1b: реальный integration через Feign, Router OK)
+
+**Цель:** GeometryClientRouter из fallback stub -> реальный Feign к integration:8092. **Достигнуто.**
+
+**Окружение:**
+- integration:8092 поднят (health=UP).
+- GET /api/v1/geometry/{projectId}?objectRef= — работает (для test-e2e-001 / geo-12345).
+
+**E2E (projectId=test-e2e-001, objectRef=geo-12345 — реальный integration):**
+- GeometryClientRouter: integration OK (вместо fallback to stub) — ГЛАВНОЕ.
+- material = Steel 20Kh (было Steel-45 из stub) -> lookup сработал.
+- complexityScore = 2 (было 3) -> setups 2->1.
+- holes = false (было true) -> DRILLING исчез, ops 6->5.
+- MILLING V = 100 (Steel 20Kh), T=60.
+- GRINDING V = 25 (Steel 20Kh), T=30.
+- machining_process: setups=1, ops=5, stages=5, passed=true.
+- results: 35 -> 36.
+- cnc=0, requiresCnc=false, cncProgramId=null.
+
+**By design:** cnc_program пусто. Причина: planOperations ставит cnc = isCncCapable(method) && complexityScore > 2. У geo-12345 complexityScore=2 (не > 2) -> cnc=false для всех операций -> requiresCncProgram=false -> generate не вызывается. Это разумная эвристика: простая деталь -> универсальный станок, сложная -> ЧПУ. Порог > 2 vs >= 2 — отдельная задача (C.2.2, если понадобится).
+
+**Без изменений в коде** — только E2E-верификация. integration:8092 можно остановить (Router при отсутствии integration уйдёт в stub — by design).
+
+**Что осталось:**
+- **C.2.2 (опционально):** порог complexityScore > 2 vs >= 2 в planOperations.
+- **Тесты machining:** стратегии (MillingStrategy, DrillingStrategy), CncProgramService.
+- **C.5.1b (опционально):** YAML-override cuttingData.
+- **iktk.orchestrator.results.queue** — 36 сообщений без consumer'а.
