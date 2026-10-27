@@ -2251,3 +2251,38 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Auth.4: тесты AbacService (471 строка, самая сложная логика — SubjectAttributes, ResourceAttributes, isAllowed, allowedActions).
 - Auth.5: gateway + JWT-фильтр.
 - User'ы с не-ADMIN ролями: только admin (ADMIN). Для E2E на MANAGER/ENGINEER — нужен seed пользователей (отдельная задача).
+
+### Обновление 2026-10-27 (Auth.4: тесты AbacService — 24 теста)
+
+**Цель:** покрыть AbacService (471 строка, ABAC-логика). **Достигнуто.**
+
+**Создано (1 файл, 24 теста):**
+- auth/src/test/java/.../service/AbacServiceTest.java (24):
+  * isAllowed: nullSubject, nullAction, nullResource, otherEnterprise (noAdmin), adminBypasses, integrationBypasses, owner_READ, owner_WRITE, owner_WRITE_stageCompleted (short-circuit), otherUser_stageCompleted_WRITE, otherUser_stageCompleted_READ, otherUser_stageArchived_APPROVE.
+  * allowedActions: owner (все 6), otherEnterprise (пусто).
+  * require: allowed (no throw), notAllowed (AccessDeniedException).
+  * explain: 11 ключей, nullSubject, rbacAllowed для ADMIN/VIEWER+WRITE/MANAGER+DELETE/ENGINEER+EXPORT/MANAGER+APPROVE.
+  * buildSubject: unknownUser (пустые роли).
+
+**Логика AbacService (по коду):**
+- isAllowed = evaluate (ABAC), НЕ checkRbac. checkRbac доступен через explain(...).get("rbacAllowed").
+- evaluate: evaluateEnterprise -> evaluateOwnership (short-circuit, если owner и action != DELETE/ADMIN) -> evaluateStage -> evaluateClassification -> evaluateDepartment.
+- evaluateEnterprise: resource null или enterpriseCode null -> true; ADMIN/INTEGRATION -> true; иначе ==.
+- evaluateOwnership: resource null/ownerId null -> false; userId != ownerId -> false; action == DELETE/ADMIN -> false; иначе true (short-circuit).
+- evaluateStage: resource null/stage null -> true; action != WRITE/DELETE/APPROVE -> true; COMPLETED/ARCHIVED -> false.
+- evaluateClassification: всегда true (закомментировано, по решению C в final_TZ.md).
+- evaluateDepartment: всегда true.
+- checkRbac: ADMIN -> все; READ: MANAGER/ENGINEER/NORMER/OPERATOR/VIEWER/INTEGRATION; WRITE: MANAGER/ENGINEER/NORMER/INTEGRATION; APPROVE: MANAGER; EXPORT: MANAGER/ENGINEER; DELETE: false (только ADMIN); ADMIN: false (только ADMIN).
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS, Tests run: 63 (7 + 15 + 17 + 24), Failures: 0, Errors: 0
+
+**Грабли:**
+- isAllowed != checkRbac: ABAC-часть без RBAC. RBAC только через explain. Это by design (isAllowed используется в бизнес-логике после RBAC-проверки на gateway/контроллере).
+- evaluateClassification и evaluateDepartment — заглушки (true). При изменении политики (например, запрет EXPORT для CONFIDENTIAL) — раскомментировать.
+
+**Что осталось:**
+- Auth.5: gateway + JWT-фильтр (gateway не настроен — yml, routes, фильтр).
+- Seed users с не-ADMIN ролями (для E2E MANAGER/ENGINEER/VIEWER).
+- UserRepository: findByUsernameOrEmail (для login) — уже покрыто.
