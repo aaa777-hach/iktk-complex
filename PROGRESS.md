@@ -1,19 +1,20 @@
-## 🔄 HANDOFF (обновлено 2026-10-27, сессия 20 — assembly closure)
+## 🔄 HANDOFF (обновлено 2026-10-27, сессия 21 — seed users)
 
-- **HEAD:** `76c59b5` (test: +9) + `542fadf` (fix yml) поверх `a43a248`
-- **Текущая сессия (20) — сделано:**
-  - assembly: 58 → 67 тестов (+9), BUILD SUCCESS: `AssemblyGapsTest` (6), `RabbitTopologyConfigTest` (3)
-  - fix: `application.yml` — `integration.url` 8095→**8092** (8095 = norming!), +`default-requeue-rejected: false` (грабля №10)
-  - покрытие: `RabbitTopologyConfig` 0%→~100%, `AssemblyProcessService` ~100%, consumer MPP ~100%
+- **HEAD:** seed-users коммит поверх `5dc1d44` (assembly closure)
+- **Текущая сессия (21) — сделано:**
+  - `auth/src/main/resources/db/seed/seed-users.sql` — 6 юзеров, по 1 не-ADMIN роли каждому
+  - ID фиксированные `20000000-...0001..0006`, пароль `admin123` (BCrypt от admin, cost=10), идемпотентно (`ON CONFLICT DO NOTHING`)
+  - применено в БД `iktk_auth` вручную (`psql -f`, auth без Flyway)
+- **E2E проверено (сессия 21):** 7 × login 200 (admin=ADMIN, manager=MANAGER, engineer=ENGINEER, normer=NORMER, operator=OPERATOR, viewer=VIEWER, integration=INTEGRATION), wrong-pass 401
 - **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED
 - **Модули в reactor:** core, shared, gateway, auth, orchestrator, casting, integration, forging, machining, norming, equipment, bom, assembly, recommendation
-- **Тесты (verify):** core 77, shared 90, assembly **67**, orchestrator 103, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
+- **Тесты (verify):** core 77, shared 90, assembly 67, orchestrator 103, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
 - **Не проверено / в работе:**
   - **Auth.5** gateway + JWT-фильтр — не начат; порт gateway не подтверждён (8080 orchestrator, 8081 auth; свободны 8082/8085/8088)
-  - seed users с не-ADMIN ролями (сейчас только admin/ADMIN) — для E2E MANAGER/ENGINEER/VIEWER
   - tooling-service не существует (`machining` использует `ToolingClientStub`)
   - integration: многоуровневая сборка
-- **Следующий шаг:** на выбор — Auth.5 (нужно решение по порту) / seed users (~20–30 мин) / norming покрытие
+  - norming: покрытие не считали (18 model-тестов)
+- **Следующий шаг:** **Auth.5** — gateway + JWT-фильтр. Seed users готов (можно проверять `X-User-Roles=[MANAGER]` и т.п.). Нужно решение по порту gateway.
 - **Открытые техдолги:** `C.2.2` (порог complexityScore), `C.5.1b` (YAML-override cuttingData), `tooling-service`, `integration` многоуровневая сборка
 - **Запущено сейчас:** остановлено (сессия закрыта)
 ---
@@ -2403,4 +2404,38 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Auth.5 gateway + JWT-фильтр (порт не подтверждён).
 - seed users с не-ADMIN ролями.
 - norming: покрытие не считали (18 model-тестов).
+- tooling-service, integration многоуровневая сборка.
+
+### Обновление 2026-10-27 (сессия 21 — seed users: 6 не-ADMIN ролей)
+
+**Цель:** завести юзеров с не-ADMIN ролями для E2E на ролях и для будущего Auth.5 (JWT-фильтр должен инжектить `X-User-Roles`). **Достигнуто.**
+
+**Создано (1 файл):**
+- `auth/src/main/resources/db/seed/seed-users.sql` — 6 юзеров × 1 роль, ID фиксированные `20000000-0000-0000-0000-00000000000{1..6}`, пароль `admin123` (BCrypt `$2a$10$MpB...` — переиспользован из admin), идемпотентно.
+
+| username | роль | display_name |
+|---|---|---|
+| manager | MANAGER | Менеджер проекта |
+| engineer | ENGINEER | Инженер-технолог |
+| normer | NORMER | Нормировщик |
+| operator | OPERATOR | Оператор |
+| viewer | VIEWER | Наблюдатель |
+| integration | INTEGRATION | Интегратор |
+
+**Применено:** `docker cp seed-users.sql iktk-postgres:/tmp/` + `psql -U iktk_app -d iktk_auth -v ON_ERROR_STOP=1 -f /tmp/seed-users.sql`. Вывод `INSERT 0 6` ×2.
+
+**Проверено (SQL):** 7 строк в `users` (admin + 6), у каждого ровно одна роль, `display_name` по-русски без кракозябр (psql -f сохранил UTF-8).
+
+**Проверено (E2E, auth:8081):**
+- login admin/manager/engineer/normer/operator/viewer/integration (пароль `admin123`) → все 200, `userInfo.roles` = [ADMIN] / [MANAGER] / [ENGINEER] / [NORMER] / [OPERATOR] / [VIEWER] / [INTEGRATION], `expiresIn=900`
+- login manager/wrong-pass → 401 (проверка, что чужой пароль не проходит)
+
+**Грабли:**
+- Первая попытка `psql` была с `-U ittk_app` (двойная `t` — опечатка в моём скрипте) → `FATAL: role "ittk_app" does not exist`. Все команды с `-U iktk_app`.
+- `users.username` UNIQUE (`ukr43af9ap4edm43mmtq01oddj6`), `user_roles` composite PK `(user_id, role_id)` — обе `ON CONFLICT` валидны.
+- `display_name` через PowerShell `WriteAllText(UTF8 no BOM)` + `docker cp` + `psql -f` — UTF-8 сохранился. Если бы через `| docker exec -i` (stdin), риск кракозябр — не проверяли, но `-f` надёжнее.
+
+**Что осталось:**
+- **Auth.5** gateway + JWT-фильтр — следующий шаг. Порт gateway не подтверждён.
+- norming: покрытие не считали.
 - tooling-service, integration многоуровневая сборка.
