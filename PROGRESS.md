@@ -2320,3 +2320,37 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - auth: Auth.5 gateway, seed users с не-ADMIN ролями.
 - assembly-process-service: 5 тестов (есть), но 694 строки AssemblyProcessService — мало.
 - integration: многоуровневая сборка.
+
+### Обновление 2026-10-27 (C: тесты casting — 25 тестов)
+
+**Цель:** покрыть тестами модуль casting (0 тестов до этого). **Достигнуто.**
+
+**Создано (5 файлов, 25 тестов):**
+- casting/src/test/.../model/CastingMethodTest.java (4): values_5, valueOf, valueOf_unknown, listOf.
+- casting/src/test/.../model/ShrinkageCalculationTest.java (3): builder, noArgsConstructor, setters.
+- casting/src/test/.../model/GatingSystemTest.java (3): builder, noArgsConstructor (zero), setters.
+- casting/src/test/.../service/CastingProcessServiceTest.java (10): analyze (5: passed/issueThinWall/issueFillet/warningDraft/warningsUndercutsHotSpots), buildStages (2: 6stages_anyMethod/firstBlank_lastControl), designProcess (3: nullRequest/missingProjectId/geometryNull).
+- casting/src/test/.../messaging/CastingCommandConsumerTest.java (5): onCommand happyPath/invalidJson/serviceThrows/defaultObjectRef/payloadObjectRef.
+
+**Логика casting (по коду):**
+- designProcess: validate -> fetchGeometry -> designProcessWithGeometry (новый public метод — geometry снаружи).
+- designProcessWithGeometry: analyze -> selectCastingMethod -> calculateShrinkage -> calculateGatingSystem -> designTooling -> buildStages -> save.
+- analyze: issues = minWallThickness, minFilletRadius; warnings = minDraftAngle, undercuts, hotSpots; passed = issues.isEmpty.
+- buildStages: 6 stages (BLANK_PREPARATION + 4×CASTING + TECHNICAL_CONTROL), не зависит от method.
+- selectCastingMethod — public, зависит от equipmentClient.isMethodAvailable (не тестировали happy path).
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS, Tests run: 25 (4+3+3+10+5), Failures: 0, Errors: 0
+
+**Грабли:**
+- Lombok отсутствует на моделях casting (ShrinkageCalculation, GatingSystem — ручные getters/setters + ручной Builder). Тесты equalsAndHashCode_lombok НЕ писались (грабля forging F.1 учтена).
+- RabbitTemplate.convertAndSend(..., MessagePostProcessor) — 4-й аргумент MessagePostProcessor (Spring AMQP), НЕ Consumer. Тест CastingCommandConsumerTest сразу на MessagePostProcessor (грабля forging учтена).
+- CastingProcessService nested-классы: GeometryData (11 полей, public ctor + @JsonCreator), ManufacturabilityReport (3 поля, public ctor), ToolingSpec (3 поля, private ctor + builder).
+- buildStages использует tooling.getItems().get(0) — NPE если items пуст (в тесте tooling() заполнен).
+
+**Что осталось:**
+- norming (0 тестов) — аналогичная работа (~1500 строк, 1-2 сессии).
+- assembly-process-service (5 тестов, 694 строки AssemblyProcessService) — мало тестов.
+- auth: Auth.5 gateway, seed users с не-ADMIN ролями.
+- integration: многоуровневая сборка.
