@@ -2218,3 +2218,36 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - Auth.5: gateway + JWT-фильтр.
 - permissions пусто (0), roles только ADMIN (6 остальных нет: MANAGER, ENGINEER, NORMER, OPERATOR, VIEWER, INTEGRATION).
 - Seed permissions + role_permissions — для полноценного RBAC/ABAC.
+
+### Обновление 2026-10-27 (Seed: 6 ролей + 15 permissions + 52 role_permissions)
+
+**Цель:** заполнить RBAC-справочники (roles / permissions / role_permissions) для работы RbacService/AbacService. **Достигнуто.**
+
+**Что сделано (SQL через stdin, идемпотентно):**
+- +6 ролей: MANAGER, ENGINEER, NORMER, OPERATOR, VIEWER, INTEGRATION (ADMIN уже был).
+- +15 permissions: user:read/write/delete, project:read/write/delete, process:read/design, norm:read/write, report:read, equipment:read/write, admin:all, integration:call.
+- +52 role_permissions:
+  * ADMIN -> 15 (все)
+  * INTEGRATION -> 15 (все)
+  * MANAGER -> 6 (project:*, user:read, report:read, equipment:read, process:read)
+  * VIEWER -> 6 (все *:read)
+  * ENGINEER -> 4 (process:read/design, project:read, report:read)
+  * NORMER -> 4 (norm:read/write, process:read, report:read)
+  * OPERATOR -> 2 (process:read, equipment:read)
+
+**Создано (1 файл):**
+- auth/src/main/resources/db/seed/seed-permissions-roles.sql — тот же SQL для воспроизведения (psql -f). Не подключён к Flyway (auth не использует Flyway: pom без flyway, ddl-auto=validate, схема создана вне Flyway).
+
+**Проверено (SQL-аналог getUserPermissions):**
+- roles=7, permissions=15, role_permissions=52.
+- admin: 15 permissions (через user_roles -> role_permissions).
+- RbacService.getUserPermissions("admin-id") теперь вернёт 15 (а не 0, как до Seed).
+
+**Грабли:**
+- auth БЕЗ Flyway -> seed применён вручную (psql через docker exec -i stdin). Сохранён как .sql для воспроизведения.
+- ON CONFLICT DO NOTHING -> идемпотентно (повторный запуск не падает, INSERT 0 0).
+
+**Что осталось:**
+- Auth.4: тесты AbacService (471 строка, самая сложная логика — SubjectAttributes, ResourceAttributes, isAllowed, allowedActions).
+- Auth.5: gateway + JWT-фильтр.
+- User'ы с не-ADMIN ролями: только admin (ADMIN). Для E2E на MANAGER/ENGINEER — нужен seed пользователей (отдельная задача).
