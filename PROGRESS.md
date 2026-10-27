@@ -1,3 +1,29 @@
+## 🔄 HANDOFF (обновлено 2026-10-27, сессия 19 — handoff toolkit)
+
+- **HEAD:** `fd29996` (casting closed) + незакоммиченные правки текущей сессии (toolkit)
+- **Текущая сессия (19) — сделано:**
+  - `PROJECT.md` — конституция проекта (архитектура, порты, креды, грабли, соглашения)
+  - `handoff.ps1` — генератор `handoff-*.md` (ASCII-only, `$PSScriptRoot`, проверен: 48 КБ)
+  - `bootstrap-prompt.md` — шаблон первого сообщения в новом чате
+  - HANDOFF-блок в `PROGRESS.md` — снимок состояния
+  - Путь проекта переехал: `...\Оркестр\...` → `C:\Users\Antipovich\Desktop\Orchestr\iktk-complex`
+- **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26, `2eaea50f-...`)
+- **Модули в reactor:** core, shared, gateway, auth, orchestrator, casting, integration, forging, machining, norming, equipment, bom, assembly, recommendation
+- **Тесты (verify):** orchestrator 103, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
+- **Не проверено / в работе:**
+  - auth: Auth.5 gateway + JWT-фильтр
+  - norming: 0 тестов
+  - tooling-service: не существует (`machining` использует `ToolingClientStub`)
+  - gateway: порт не подтверждён после переноса orchestrator на 8080
+- **Следующий шаг:** Auth.5 (gateway + JWT-фильтр) → Seed users с не-ADMIN ролями
+- **Открытые техдолги:** `C.2.2` (порог complexityScore > 2 vs >= 2), `C.5.1b` (YAML-override cuttingData), `tooling-service`, `integration` многоуровневая сборка
+- **Запущено сейчас:** остановлено (сессия закрыта)
+- **Исправления после запуска toolkit:**
+  - `handoff.ps1` переписан ASCII-only (кириллица в `.ps1` → ParserError в PS 5.1)
+  - `$Root = $PSScriptRoot` — работает из любой папки
+  - Разовые проверки — только `[System.IO.File]::ReadAllLines((Join-Path $root "PROGRESS.md"), UTF8)`, не `ReadAllLines("PROGRESS.md")` (грабли №2)
+
+---
 # Прогресс по проекту iktk-complex
 
 > Обновляйте в конце каждой сессии. Начинайте новый день с чтения — 2 минуты, и вы в контексте.
