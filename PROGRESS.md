@@ -2054,3 +2054,32 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **iktk.orchestrator.results.queue** — 36 сообщений без consumer'а.
 - **machining**: тесты есть, E2E работает, MinIO, справочники, Router (Feign + fallback). Модуль готов к эксплуатации.
 
+
+### Обновление 2026-10-27 (B: тесты CncProgramService, 9 тестов)
+
+**Цель:** покрыть CncProgramService.generate() — последний сервис без тестов. **Достигнуто.**
+
+**Создано (1 файл):**
+- src/test/.../service/CncProgramServiceTest.java (9 тестов): generate_happyPath, generate_emptyOperations_throws, generate_noCncOperations_throws, generate_equipmentNull_throws, generate_nullRequest_throws, generate_missingProjectId_throws, regenerate_notFound_throws, delete_callsStorageAndRepo, delete_storageFailure_doesNotThrow
+
+**Стратегия:** @ExtendWith(MockitoExtension.class), @Mock на CncProgramRepository, EquipmentClient, StorageClient, PostprocessorRegistry, ToolpathGenerator, GCodeValidator; реальные MachiningProperties (new) и Iso6983Postprocessor (new). ArgumentCaptor на repository.save.
+
+**Покрыто:**
+- generate: happy path (2 ops, uri=s3://..., model=CNC-DEFAULT, postprocessor=ISO6983, validation.valid=true), пустой список, все op.cnc=false, equipment=null, null request, missing projectId.
+- regenerate: not found -> OrchestrationException.
+- delete: storage.delete + repository.delete; storage падает -> repository.delete всё равно.
+
+**Проверено:**
+- mvn compile -> BUILD SUCCESS
+- mvn verify -> BUILD SUCCESS, Tests run: 35 (26 + 9), Failures: 0
+
+**Грабли:**
+- \$ErrorActionPreference = "Stop" + git add + CRLF-warning -> падение. Для git-команд: Continue + проверка \$LASTEXITCODE.
+- Перед создающим коммитом — проверка "нет ли уже раздела в PROGRESS.md" (Select-String) и git log -1. Иначе дубликаты.
+- Mockito strict stubs: в generate_nullRequest_throws stubHappyPath() не вызывается, иначе UnnecessaryStubbingException.
+
+**Что осталось:**
+- **C.2.2 (опционально):** порог complexityScore > 2 vs >= 2.
+- **C.5.1b (опционально):** YAML-override cuttingData.
+- **iktk.orchestrator.results.queue** — 37 сообщений без consumer'а.
+- **machining**: 35 тестов, E2E, MinIO, Router, справочники, валидатор, стратегии. Модуль готов.
