@@ -1,22 +1,26 @@
-## 🔄 HANDOFF (обновлено 2026-10-27, сессия 21 — seed users)
+## 🔄 HANDOFF (обновлено 2026-10-27, сессия 22 — Auth.5 gateway + грабля №5 в auth/orchestrator)
 
-- **HEAD:** seed-users коммит поверх `5dc1d44` (assembly closure)
-- **Текущая сессия (21) — сделано:**
-  - `auth/src/main/resources/db/seed/seed-users.sql` — 6 юзеров, по 1 не-ADMIN роли каждому
-  - ID фиксированные `20000000-...0001..0006`, пароль `admin123` (BCrypt от admin, cost=10), идемпотентно (`ON CONFLICT DO NOTHING`)
-  - применено в БД `iktk_auth` вручную (`psql -f`, auth без Flyway)
-- **E2E проверено (сессия 21):** 7 × login 200 (admin=ADMIN, manager=MANAGER, engineer=ENGINEER, normer=NORMER, operator=OPERATOR, viewer=VIEWER, integration=INTEGRATION), wrong-pass 401
-- **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED
-- **Модули в reactor:** core, shared, gateway, auth, orchestrator, casting, integration, forging, machining, norming, equipment, bom, assembly, recommendation
-- **Тесты (verify):** core 77, shared 90, assembly 67, orchestrator 103, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
+- **HEAD:** `git log -1` (после C1–C5 сессии 22)
+- **Текущая сессия (22) — сделано:**
+  - **Auth.5 закрыт:** gateway:8085 (был 8080 — конфликт с orchestrator), JWT-фильтр E2E
+  - `gateway/application.yml` → `src/main/resources/`: порты routes выровнены (orchestrator 8080, bom 8091, assembly 8097, recommendation 8098, casting 8090, equipment 8094, auth 8081), секрет `iktk-dev-...` = auth
+  - `AuthFilter`: +`/api/v1/auth/introspect` в allowlist
+  - `AuthFilterTest`: 10 тестов (public×4, 401×5, valid→headers)
+  - **auth фикс (грабля №5):** удалён корневой `auth/application.yml`
+  - **orchestrator фикс (грабля №5):** удалён корневой `orchestrator/application.yml`, конфиг объединён в classpath, убран `hibernate.dialect` (H2-тесты через H2Dialect)
+  - `TransitionHandlerTest`: 2 stale-ассерта (`ASSEMBLY_ANALYSIS`/`PART_PROCESS_PLANNING` → null, события извне)
+  - `.gitignore`: +`*.log.err`, `*.err`
+- **E2E (сессия 22):** login manager/admin123 → 200; /me с Bearer → 200, userId=20000000-..., roles=[MANAGER]; /me без токена → 401; introspect без токена → 200, active=false
+- **Тесты:** gateway 10 (было 0), orchestrator **103/0/0**, assembly 67, core 77, shared 90, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
 - **Не проверено / в работе:**
-  - **Auth.5** gateway + JWT-фильтр — не начат; порт gateway не подтверждён (8080 orchestrator, 8081 auth; свободны 8082/8085/8088)
-  - tooling-service не существует (`machining` использует `ToolingClientStub`)
-  - integration: многоуровневая сборка
-  - norming: покрытие не считали (18 model-тестов)
-- **Следующий шаг:** **Auth.5** — gateway + JWT-фильтр. Seed users готов (можно проверять `X-User-Roles=[MANAGER]` и т.п.). Нужно решение по порту gateway.
-- **Открытые техдолги:** `C.2.2` (порог complexityScore), `C.5.1b` (YAML-override cuttingData), `tooling-service`, `integration` многоуровневая сборка
-- **Запущено сейчас:** остановлено (сессия закрыта)
+  - Redis для gateway rate limiter (`/orchestrator/**` падает при недоступном Redis; `/api/v1/auth/**` не затронут)
+  - `/fallback/**` route есть, fallback-контроллера нет → 404 при CircuitBreaker
+  - tooling-service не существует (machining на `ToolingClientStub`)
+  - integration многоуровневая, norming coverage
+  - `application-test.yml` (orchestrator): `database-platform: H2Dialect` — Hibernate warning, убрать
+- **Следующий шаг:** fallback-контроллер gateway / Redis для rate limiter / tooling-service stub / norming coverage
+- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `tooling-service`, `integration`, Redis для rate limiter, fallback-контроллер
+- **Запущено сейчас:** auth:8081 (spring-boot:run), gateway:8085 (java -jar)
 ---
 # Прогресс по проекту iktk-complex
 
@@ -2439,3 +2443,48 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **Auth.5** gateway + JWT-фильтр — следующий шаг. Порт gateway не подтверждён.
 - norming: покрытие не считали.
 - tooling-service, integration многоуровневая сборка.
+
+### Обновление 2026-10-27 (сессия 22 — Auth.5: gateway + JWT-фильтр, E2E зелёный, грабля №5 в auth+orchestrator)
+
+**Цель:** закрыть Auth.5 — gateway:8085 + JWT-фильтр. **Достигнуто.**
+
+**Что нашли (gateway уже был реализован):**
+- `AuthFilter implements GlobalFilter, Ordered` — 260 строк, HS256, `requireIssuer`, Expired/Invalid/Missing, JSON-401.
+- `RoutesConfig` — auth/orchestrator/equipment/bom/assembly/recommendation/casting, CB/Retry/RateLimiter.
+- `application.yml` в корне `gateway/`, `src/main/resources` пуст; `src/test` пуст.
+- `application.yml` в корне `auth/` (секрет `change-me-...`); `application.yml` в корне `orchestrator/` (datasource/jpa/flyway).
+
+**Правки (main):**
+- `gateway/src/main/resources/application.yml` (новый): порт 8085, порты routes по PROJECT.md, секрет `iktk-dev-...`, issuer `iktk`.
+- `GatewayProperties.java`: UTF-8 no BOM (были кракозябры), `orchestratorUri` 8090→8080.
+- `AuthFilter.java`: `+"/api/v1/auth/introspect"` в PUBLIC_PATHS.
+- `gateway/pom.xml`: `+reactor-test` (test).
+- `orchestrator/src/main/resources/application.yml`: объединён (datasource/jpa/flyway/rabbitmq), убран `hibernate.dialect` (иначе H2-тест ловил PostgreSQLDialect → JSONB deserialize error).
+- `auth/application.yml`, `gateway/application.yml`, `orchestrator/application.yml` (корневые) — **удалены** (грабля №5).
+
+**Правки (test):**
+- `gateway/.../AuthFilterTest.java` (новый, 10): public login/refresh/introspect/health, missing/not_bearer/garbage/expired/wrong_issuer → 401, valid → X-User-Id/X-User-Roles/X-Request-Id.
+- `orchestrator/.../TransitionHandlerTest.java`: 2 stale asserts (`ASSEMBLY_ANALYSIS`, `PART_PROCESS_PLANNING` → null — событие из bom-service / casting).
+
+**Правки (config):**
+- `.gitignore`: +`*.log.err`, `*.err`.
+
+**Проверено:**
+- `mvn -pl gateway -am verify` → BUILD SUCCESS, `AuthFilterTest` 10/10.
+- `mvn -pl orchestrator -am verify` → BUILD SUCCESS, **103/0/0** (было 2 failures + 1 error).
+- E2E через gateway:8085: login manager → 200; /me Bearer → 200, userId=UUID, roles=[MANAGER]; /me без токена → 401; introspect без токена → 200, active=false.
+
+**Грабли:**
+- **`spring-boot:run` читает корневой `application.yml` раньше classpath** — подтверждено на auth (секрет `change-me`) и gateway. Фикс: удалить корневой + `mvn clean` (иначе `target/classes` старый).
+- **Явный `driver-class-name` в main yml + H2-профиль** — Spring Boot берёт драйвер из main, URL из профиля → конфликт. Фикс: убрать `driver-class-name`, Spring Boot сам по URL.
+- **Явный `hibernate.dialect` в main yml + H2-тест** — H2 + PostgreSQLDialect → JSONB → `Could not deserialize string to Map`. Фикс: убрать `properties.hibernate.dialect`.
+- **`TransitionHandlerTest` stale:** тест ожидал `BOM_EXTRACTED`/`PART_PROCESS_READY`, код возвращает `null` (событие извне). Правится тест, не код.
+- **`Invoke-WebRequest` PS 5.1 не отдаёт тело 401** через `GetResponseStream` (баг). Диагностика — `Content-Length` из headers + логи gateway.
+- **`[4.1]` в начале строки** — PowerShell читает как приведение типа. Метки — в `Write-Host`.
+- **`$pid` — read-only** (грабля №3, повтор).
+- **PS 5.1 `??`** — ParserError.
+- **PS 5.1 here-string в интерактивной консоли** — если `'@` с отступом, «висит».
+- **PS 5.1 консоль cp1251 рендерит UTF-8 коммиты как кракозябры** — но байты в git корректны (проверено: `cp1251→UTF-8` даёт читаемый текст). На GitHub/VS Code — нормально.
+
+**Что осталось:**
+- Redis для gateway rate limiter, fallback-контроллер, tooling-service, integration, norming coverage, `application-test.yml` clean.
