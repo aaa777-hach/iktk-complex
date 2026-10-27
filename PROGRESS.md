@@ -2083,3 +2083,35 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **C.5.1b (опционально):** YAML-override cuttingData.
 - **iktk.orchestrator.results.queue** — 37 сообщений без consumer'а.
 - **machining**: 35 тестов, E2E, MinIO, Router, справочники, валидатор, стратегии. Модуль готов.
+
+### Обновление 2026-10-27 (E: orchestrator на орбите, purge, DLQ-политика)
+
+**Цель:** разобрать iktk.orchestrator.results.queue, поднять orchestrator, настроить DLQ. **Достигнуто.**
+
+**Окружение:**
+- orchestrator:8080 (health=UP, PID 20004), таблицы project_state / decision_log / flyway_schema_history в iktk_orchestrator.
+- 36 сообщений в orchestrator.results.queue — старые: OUTSOURCING_SELECTED (22.10, p-int-1), forging (a097907a-...), machining (test-e2e-001). Все без project_state -> OrchestrationException: Проект не найден -> requeue -> бесконечный цикл.
+
+**Действия:**
+- orchestrator остановлен.
+- Purge очереди: HTTP DELETE /contents (async, не сразу) + rabbitmqctl purge_queue (контрольный). Итог: messages=0.
+- application.yml: +spring.rabbitmq.listener.simple.default-requeue-rejected: false -> ошибки идут в DLQ, не requeue.
+- orchestrator рестарт (PID 20004, health=UP).
+- Проверка стабильности: orchestrator.results.queue=0, DLQ=0, machining.queue=0, consumers=1 (стабильно).
+
+**Правки (1 файл):**
+- orchestrator/src/main/resources/application.yml: +listener.simple.default-requeue-rejected: false
+
+**Грабли:**
+- ConditionalRejectingErrorHandler + defaultRequeueRejected=true (default) -> ошибка -> requeue -> бесконечный цикл. Симптом: unack=N, DLQ=0.
+- HTTP DELETE /api/queues/.../contents асинхронен: возвращает 200, фактическое удаление позже. Start-Sleep 2 сек недостаточно. Фикс: poll-loop (проверять messages каждые 2 сек) или rabbitmqctl purge_queue после остановки consumer.
+- Purge нельзя делать при работающем consumer: 36 unack -> purge возвращает OK, но сообщения остаются unack. Сначала stop orchestrator, потом purge.
+- project_runtime / decision_log_entry — моя ошибка в E.2 (ожидал такие имена). Реальные: project_state / decision_log.
+- $ErrorActionPreference="Stop" + git add + CRLF-warning -> падение (2-й раз). Для git: Continue + $LASTEXITCODE.
+
+**Что осталось:**
+- **E.5 (опционально):** полный E2E startProject -> PART_PROCESS_READY -> state transition (POST /api/v1/orchestrator/..., см. OrchestratorController).
+- **C.2.2 (опционально):** порог complexityScore > 2 vs >= 2.
+- **C.5.1b (опционально):** YAML-override cuttingData.
+- **machining:** 35 тестов, E2E, MinIO, Router, справочники, валидатор, стратегии. Готов.
+- **orchestrator:** на орбите, очередь пуста, DLQ-политика настроена.

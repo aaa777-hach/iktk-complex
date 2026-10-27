@@ -3,6 +3,9 @@ spring:
     name: orchestrator
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
+    listener:
+      simple:
+        default-requeue-rejected: false
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:iktk}
     password: ${RABBITMQ_PASSWORD:iktk_dev_password}
