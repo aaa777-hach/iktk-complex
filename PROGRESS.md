@@ -1,19 +1,23 @@
-## 🔄 HANDOFF (обновлено 2026-10-28, сессия 27 — norming coverage: 18 → 40 тестов)
+## 🔄 HANDOFF (обновлено 2026-10-28, сессия 27 — norming coverage: 18 → 72 теста, service-слой закрыт)
 
-- **HEAD:** `git log -1` (после C1–C2 сессии 27: norming tests + docs)
+- **HEAD:** `git log -1` (после C1–C3 сессии 27)
 - **Текущая сессия (27) — сделано:**
-  - **`norming` — 18 → 40 тестов:** `TechProcessMapperTest` (14) — маппинг assembly `operationType` → `Stage.OperationType` (PREPARATION→BLANK_PREPARATION, BASIC/NODE/GENERAL_ASSEMBLY→ASSEMBLY, CONTROL→TECHNICAL_CONTROL, прямые + fallback AUXILIARY); `NormingCommandConsumerTest` (8) — `onCommand` (demo/actual/assembly-throw-fallback/invalid-json/no-projectId/service-throw/MPP headers/null-correlationId).
-  - **mvn verify norming:** BUILD SUCCESS, 40/40.
-  - **service-слой покрыт:** `TechProcessMapper` (14), `NormingCommandConsumer` (8), `TimeNormService`/`MaterialNormService` (проверены E2E в полном smoke, но unit-тестов нет — TODO).
-- **Тесты (сессия 27):** norming **40** (было 18), integration 20, assembly 67, gateway 13, auth 63, core 77, shared 90, orchestrator 103, casting 25, forging 34, machining 39, bom-service 85, equipment-service 126, recommendation 143, tooling-service 7. **Итого 932/0/0.**
+  - **`norming` — 18 → 72 теста (+54):**
+    - `TechProcessMapperTest` (14): маппинг assembly `operationType` → `Stage.OperationType` + fallback AUXILIARY, metadata, stages mapping, order.
+    - `NormingCommandConsumerTest` (8): `onCommand` demo/actual/assembly-throw-fallback/invalid-json/no-projectId/service-throw/MPP headers/null-correlationId.
+    - `TimeNormServiceTest` (19): `calculate` (validate ×4, happy ×2), `calculateStage` ACTUAL (2), CALCULATED MACHINING/CASTING/FORGING/ASSEMBLY/CONTROL/simpleOps/tpzWithTooling (7), `calculateMainTime`/`calculateAuxiliaryTime` direct (2), `resolveSource` (2).
+    - `MaterialNormServiceTest` (13): `calculate` validate ×3, `calculateBlankMass`/`calculatePartMass` (3), `calculateStageConsumption` (2), `calculateToolConsumption` (1), happy/blankMaterialCode/nullProcess/nullBatch (4).
+  - **mvn verify norming:** BUILD SUCCESS, **72/72**.
+  - **service-слой `norming` полностью покрыт:** `TechProcessMapper`, `NormingCommandConsumer`, `TimeNormService`, `MaterialNormService`. Формулы проверены: E2E-цифры совпали (`Тшт=19.26`, `Тшт.к=24.449`, `normPerPart=0.8248`, `КИМ=0.7614`).
+- **Тесты (сессия 27):** norming **72** (было 18), integration 20, assembly 67, gateway 13, auth 63, core 77, shared 90, orchestrator 103, casting 25, forging 34, machining 39, bom-service 85, equipment-service 126, recommendation 143, tooling-service 7. **Итого 964/0/0.**
+- **Все 15 модулей — production-grade по покрытию:** model + service + consumer/mapper слои покрыты.
 - **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26 `2eaea50f-...`)
 - **Не проверено / в работе:**
-  - `TimeNormService` / `MaterialNormService` — unit-тестов нет (E2E зелёный, формулы проверены вручную на 3 версиях). Покрытие `calculateStage`/`calculate` — TODO.
   - integration многоуровневая сборка (не про тесты — «1 геометрия = 1 деталь» → реальный BOM из CAD).
   - machining fallback (`ToolingClientRouter` → fallback) — unit-тест есть, E2E с остановленным tooling не прогоняли.
   - forging/machining не подключены к полному smoke (маршрут `PART_PROCESS_PLANNING` жёстко в casting).
-- **Следующий шаг:** `TimeNormService`/`MaterialNormService` coverage (~1 сессия) / integration многоуровневая (~1–2 сессии) / `C.2.2` (порог complexityScore)
-- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` многоуровневая, `norming` service (TimeNorm/MaterialNorm)
+- **Следующий шаг:** integration многоуровневая (~1–2 сессии) / `C.2.2` (порог complexityScore) / `C.5.1b` (YAML-override cuttingData)
+- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` многоуровневая
 - **Запущено сейчас:** остановлено. При старте следующей сессии — по PROJECT.md §6.
 ---
 # Прогресс по проекту iktk-complex
@@ -2616,3 +2620,23 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - `TimeNormService` / `MaterialNormService` — unit-тестов нет (E2E зелёный).
 - `integration` многоуровневая сборка.
 - `C.2.2`, `C.5.1b`.
+
+### Обновление 2026-10-28 (сессия 27, продолжение — MaterialNormService coverage, norming 72/72)
+
+**Цель:** закрыть оставшийся service-слой `norming` — `MaterialNormService`. **Достигнуто.**
+
+**Создано (1 файл):**
+- `service/MaterialNormServiceTest` (13): `calculate` validate ×3 (null request/projectId/empty stages), `calculateBlankMass`/`calculatePartMass` формула (V·ρ/10⁶) + part zero → reference 0.8, `calculateStageConsumption` (TECHNICAL_CONTROL → loss=0, MACHINING → loss>0), `calculateToolConsumption` (MACHINING → 1 tool, `toolsPerPart=0.0417`, `perBatch=0.4170`, CONTROL не tool-consuming), `calculate` happy (массы, save, normId, КИМ>0, consumptions=2, toolConsumptions=1, defect=0.02), `calculate` blankMaterialCode → default, nullProcess → throw, nullBatch → ONE.
+
+**Тесты:** `mvn -pl modules/norming -am verify` → **BUILD SUCCESS**, **72/72** (было 18, +54 за сессию 27).
+
+**Грабли:**
+- **`calculate_unknownMaterial_throws`** — `getMaterialInfo("UNKNOWN_MATERIAL")` в defaults **не возвращает null** (fallback на дефолтный материал), поэтому `OrchestrationException` не бросается. Заменено на `calculate_nullProcess_throws` + `calculate_blankMaterialCode_usesDefault`.
+- **`blankMass_nullVolume_reference`** — `getBlankVolume` возвращает `100` (не null), fallback на `getReferenceBlankMass` недостижим. Удалён.
+- **`TechnologyProcess.equals` по `id`** — `isEqualTo(demoProcess())` падал (fallback создаёт новый объект с `id=processId`). Фикс: проверять `getId()`/`getStages()`, не identity.
+- **git-блоки с `$ErrorActionPreference = "Stop"`** — CRLF-warning → `NativeCommandError` → обрыв после `git add`. Фикс: `"Continue"` для git + `$LASTEXITCODE`. Повторение сессий 23–26.
+
+**Что осталось:**
+- `integration` многоуровневая сборка (функционал, не тесты).
+- `C.2.2` (порог complexityScore), `C.5.1b` (YAML-override cuttingData).
+- forging/machining в полном smoke (архитектурный маршрут `PART_PROCESS_PLANNING` → casting жёстко).
