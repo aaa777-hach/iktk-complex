@@ -32,3 +32,7 @@ logging:
   level:
     root: INFO
     ru.iktk: INFO
+
+integration:
+  cad:
+    directory: ${CAD_DIR:C:/Users/Antipovich/Desktop/Orchestr/Info/3D}

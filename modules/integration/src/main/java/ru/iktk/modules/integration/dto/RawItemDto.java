@@ -10,6 +10,7 @@ public class RawItemDto {
     private String designation;
     private String name;
     private Integer quantity;
+    private Integer level;
     private String unit;
     private String material;
     private String type;
@@ -27,6 +28,8 @@ public class RawItemDto {
     public void setName(String name) { this.name = name; }
     public Integer getQuantity() { return quantity; }
     public void setQuantity(Integer quantity) { this.quantity = quantity; }
+    public Integer getLevel() { return level; }
+    public void setLevel(Integer level) { this.level = level; }
     public String getUnit() { return unit; }
     public void setUnit(String unit) { this.unit = unit; }
     public String getMaterial() { return material; }
