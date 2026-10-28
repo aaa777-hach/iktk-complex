@@ -1,26 +1,22 @@
-## 🔄 HANDOFF (обновлено 2026-10-27, сессия 22 — Auth.5 gateway + грабля №5 в auth/orchestrator)
+## 🔄 HANDOFF (обновлено 2026-10-28, сессия 23 — gateway fallback-контроллер)
 
-- **HEAD:** `git log -1` (после C1–C5 сессии 22)
-- **Текущая сессия (22) — сделано:**
-  - **Auth.5 закрыт:** gateway:8085 (был 8080 — конфликт с orchestrator), JWT-фильтр E2E
-  - `gateway/application.yml` → `src/main/resources/`: порты routes выровнены (orchestrator 8080, bom 8091, assembly 8097, recommendation 8098, casting 8090, equipment 8094, auth 8081), секрет `iktk-dev-...` = auth
-  - `AuthFilter`: +`/api/v1/auth/introspect` в allowlist
-  - `AuthFilterTest`: 10 тестов (public×4, 401×5, valid→headers)
-  - **auth фикс (грабля №5):** удалён корневой `auth/application.yml`
-  - **orchestrator фикс (грабля №5):** удалён корневой `orchestrator/application.yml`, конфиг объединён в classpath, убран `hibernate.dialect` (H2-тесты через H2Dialect)
-  - `TransitionHandlerTest`: 2 stale-ассерта (`ASSEMBLY_ANALYSIS`/`PART_PROCESS_PLANNING` → null, события извне)
-  - `.gitignore`: +`*.log.err`, `*.err`
-- **E2E (сессия 22):** login manager/admin123 → 200; /me с Bearer → 200, userId=20000000-..., roles=[MANAGER]; /me без токена → 401; introspect без токена → 200, active=false
-- **Тесты:** gateway 10 (было 0), orchestrator **103/0/0**, assembly 67, core 77, shared 90, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
+- **HEAD:** `git log -1` (после C1–C2 сессии 23)
+- **Текущая сессия (23) — сделано:**
+  - **Fallback-контроллер gateway:** `/fallback/{service}` → 503 + JSON (`error=SERVICE_UNAVAILABLE`, `service`, `message`, `requestId`, `timestamp`)
+  - **6 routes** с `.setFallbackUri("forward:/fallback/<service>")` теперь получают осмысленный 503 вместо 404 при падении downstream
+  - `FallbackControllerTest` (3 теста, `@SpringBootTest(RANDOM_PORT)` + `WebTestClient`): orchestrator → 503+JSON, X-Request-Id пробрасывается, без заголовка — UUID
+  - **E2E проверено:** `ORCHESTRATOR_URI=9999` + `minimum-number-of-calls=2` → CB сработал → 503 + JSON через `/api/v1/orchestrator/...`; прямой `/fallback/orchestrator` → 503 + JSON
+  - gateway-verify: **13/13** (10 AuthFilter + 3 Fallback), `BUILD SUCCESS`
+- **Тесты (сессия 23):** gateway **13** (было 10), assembly 67, orchestrator 103/0/0, core 77, shared 90, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
+- **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26 `2eaea50f-...`)
 - **Не проверено / в работе:**
   - Redis для gateway rate limiter (`/orchestrator/**` падает при недоступном Redis; `/api/v1/auth/**` не затронут)
-  - `/fallback/**` route есть, fallback-контроллера нет → 404 при CircuitBreaker
-  - tooling-service не существует (machining на `ToolingClientStub`)
-  - integration многоуровневая, norming coverage
+  - tooling-service не существует (`machining` на `ToolingClientStub`)
+  - integration многоуровневая сборка, norming coverage
   - `application-test.yml` (orchestrator): `database-platform: H2Dialect` — Hibernate warning, убрать
-- **Следующий шаг:** fallback-контроллер gateway / Redis для rate limiter / tooling-service stub / norming coverage
-- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `tooling-service`, `integration`, Redis для rate limiter, fallback-контроллер
-- **Запущено сейчас:** auth:8081 (spring-boot:run), gateway:8085 (java -jar)
+- **Следующий шаг:** Redis для rate limiter (~1 ч) / tooling-service stub / norming coverage / `application-test.yml` clean (~10 мин)
+- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `tooling-service`, `integration`, Redis для rate limiter, `application-test.yml` clean
+- **Запущено сейчас:** остановлено (gateway остановлен после E2E, override-env сброшен). auth:8081 — статус неизвестен, при старте следующей сессии — по PROJECT.md §6.
 ---
 # Прогресс по проекту iktk-complex
 
@@ -2488,3 +2484,30 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 
 **Что осталось:**
 - Redis для gateway rate limiter, fallback-контроллер, tooling-service, integration, norming coverage, `application-test.yml` clean.
+
+### Обновление 2026-10-28 (сессия 23 — gateway fallback-контроллер: 503 + JSON)
+
+**Цель:** закрыть техдолг из сессии 22 — `/fallback/**` route есть, контроллера нет → 404 при CircuitBreaker. **Достигнуто.**
+
+**Создано (2 файла):**
+- `gateway/src/main/java/ru/iktk/gateway/controller/FallbackController.java` — `@RestController`, `@GetMapping("/fallback/{service}")` → `ResponseEntity.status(503)` + JSON (`error=SERVICE_UNAVAILABLE`, `service`, `message`, `requestId`, `timestamp`). `requestId` — из `X-Request-Id` (если нет — UUID), пробрасывается в ответ.
+- `gateway/src/test/java/ru/iktk/gateway/controller/FallbackControllerTest.java` (3 теста, `@SpringBootTest(RANDOM_PORT)` + `WebTestClient`): orchestrator → 503+JSON, X-Request-Id пробрасывается, без заголовка — UUID. `service=unknown-service` — тоже 503.
+
+**Проверено:**
+- `mvn -pl gateway -am verify` → **BUILD SUCCESS**, gateway **13/13** (было 10).
+- **E2E (gateway с `ORCHESTRATOR_URI=9999`, CB `minimum-number-of-calls=2`):**
+  * Прямой `GET /fallback/orchestrator` → 503 + JSON (`SERVICE_UNAVAILABLE`, `service=orchestrator`, `requestId`, `timestamp`).
+  * `GET /api/v1/orchestrator/projects/test-fallback/state` (Bearer) → CB срабатывает → `/fallback/orchestrator` → **503 + JSON**.
+  * `X-Request-Id` пробрасывается из запроса в ответ.
+- Лог gateway: `FallbackController: service=orchestrator unavailable, requestId=...` — контроллер вызывается на каждый запрос.
+
+**Грабли:**
+- **`spring-boot:repackage` не может переименовать `gateway.jar`** — файл занят запущенной JVM (PID gateway:8085 из сессии 22). Это грабля №4 из PROJECT.md. Симптом: `Tests run: 13, Failures: 0` → `BUILD FAILURE` на `repackage`. Фикс: `Stop-Process` для gateway перед `mvn verify`.
+- **`Invoke-WebRequest` PS 5.1 не отдаёт тело 4xx/5xx** (повтор граблей сессий 21-22). `curl.exe` в системе отсутствует (LTSC). Фикс: `System.Net.WebRequest` + `GetResponseStream()` — читает тело корректно.
+- **Resilience4j default CB не открывается с первого отказа** — нужно `minimum-number-of-calls` (default 100). Для E2E: `--resilience4j.circuitbreaker.instances.orchestrator-cb.minimum-number-of-calls=2` при запуске gateway (Spring Boot принимает через CLI args, yml не трогали).
+
+**Что осталось:**
+- **Redis** для gateway rate limiter (`/orchestrator/**` падает при недоступном Redis; `/api/v1/auth/**` не затронут).
+- **tooling-service** stub (machining на `ToolingClientStub`).
+- **integration** многоуровневая сборка, **norming** coverage.
+- `application-test.yml` (orchestrator): `database-platform: H2Dialect` — Hibernate warning.
