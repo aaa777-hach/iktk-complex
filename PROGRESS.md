@@ -1,22 +1,18 @@
-## 🔄 HANDOFF (обновлено 2026-10-28, сессия 23 — gateway fallback-контроллер)
+## 🔄 HANDOFF (обновлено 2026-10-28, сессия 24 — Redis rate limiter verified + H2Dialect clean)
 
-- **HEAD:** `git log -1` (после C1–C2 сессии 23)
-- **Текущая сессия (23) — сделано:**
-  - **Fallback-контроллер gateway:** `/fallback/{service}` → 503 + JSON (`error=SERVICE_UNAVAILABLE`, `service`, `message`, `requestId`, `timestamp`)
-  - **6 routes** с `.setFallbackUri("forward:/fallback/<service>")` теперь получают осмысленный 503 вместо 404 при падении downstream
-  - `FallbackControllerTest` (3 теста, `@SpringBootTest(RANDOM_PORT)` + `WebTestClient`): orchestrator → 503+JSON, X-Request-Id пробрасывается, без заголовка — UUID
-  - **E2E проверено:** `ORCHESTRATOR_URI=9999` + `minimum-number-of-calls=2` → CB сработал → 503 + JSON через `/api/v1/orchestrator/...`; прямой `/fallback/orchestrator` → 503 + JSON
-  - gateway-verify: **13/13** (10 AuthFilter + 3 Fallback), `BUILD SUCCESS`
-- **Тесты (сессия 23):** gateway **13** (было 10), assembly 67, orchestrator 103/0/0, core 77, shared 90, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
+- **HEAD:** `git log -1` (после C1–C2 сессии 24: `a1b77b5` + docs)
+- **Текущая сессия (24) — сделано:**
+  - **`application-test.yml` clean:** убран явный `database-platform: org.hibernate.dialect.H2Dialect` в `orchestrator` и `services/bom-service` (Spring Boot 3.3.5 + Hibernate 6 определяет диалект по URL). Warning `HHH90000025` исчез. verify: orchestrator **103/0/0**, bom-service **85/0/0**, BUILD SUCCESS.
+  - **Redis rate limiter проверен E2E:** gateway с override `--iktk.gateway.rate-limit-replenish=2 --iktk.gateway.rate-limit-burst=3`. Результат: `X-RateLimit-Remaining` 2→1→0, **429 Too Many Requests** получен, `X-RateLimit-Replenish-Rate: 2`, `X-RateLimit-Burst-Capacity: 3` в заголовках. Правок в коде **не потребовалось** — `RoutesConfig` + `RedisRateLimiter` уже работают, Redis жив (container `iktk-redis`, Up 9 days).
+- **Тесты:** gateway **13** (10 AuthFilter + 3 Fallback), orchestrator **103/0/0**, bom-service **85/0/0**, assembly 67, core 77, shared 90, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
 - **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26 `2eaea50f-...`)
 - **Не проверено / в работе:**
-  - Redis для gateway rate limiter (`/orchestrator/**` падает при недоступном Redis; `/api/v1/auth/**` не затронут)
   - tooling-service не существует (`machining` на `ToolingClientStub`)
   - integration многоуровневая сборка, norming coverage
-  - `application-test.yml` (orchestrator): `database-platform: H2Dialect` — Hibernate warning, убрать
-- **Следующий шаг:** Redis для rate limiter (~1 ч) / tooling-service stub / norming coverage / `application-test.yml` clean (~10 мин)
-- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `tooling-service`, `integration`, Redis для rate limiter, `application-test.yml` clean
-- **Запущено сейчас:** остановлено (gateway остановлен после E2E, override-env сброшен). auth:8081 — статус неизвестен, при старте следующей сессии — по PROJECT.md §6.
+  - `.retry(2)` на orchestrator route: 3 попытки × `requestRateLimiter` = 3 burst за один HTTP-вызов (by design, но требует больше burst при малых значениях)
+- **Следующий шаг:** tooling-service stub / norming coverage / integration многоуровневая
+- **Открытые техдолги:** `C.2.2` (порог complexityScore), `C.5.1b` (YAML-override cuttingData), `tooling-service`, `integration` многоуровневая
+- **Запущено сейчас:** остановлено (gateway остановлен, env `ORCHESTRATOR_URI` сброшен). auth:8081 — статус неизвестен, при следующем старте — по PROJECT.md §6.
 ---
 # Прогресс по проекту iktk-complex
 
@@ -2511,3 +2507,36 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - **tooling-service** stub (machining на `ToolingClientStub`).
 - **integration** многоуровневая сборка, **norming** coverage.
 - `application-test.yml` (orchestrator): `database-platform: H2Dialect` — Hibernate warning.
+
+### Обновление 2026-10-28 (сессия 24 — Redis rate limiter verified + H2Dialect clean)
+
+**Цель:** закрыть 2 техдолга из сессии 23 — `application-test.yml` clean + Redis rate limiter. **Достигнуто.**
+
+**1) `application-test.yml` clean (2 файла):**
+- `orchestrator/src/test/resources/application-test.yml` — убран `database-platform: org.hibernate.dialect.H2Dialect`.
+- `services/bom-service/src/test/resources/application-test.yml` — то же.
+- Причина: Spring Boot 3.3.5 + Hibernate 6 определяет диалект по JDBC URL. Явное указание — warning `HHH90000025: H2Dialect does not need to be specified explicitly using 'hibernate.dialect'`.
+- verify: `mvn -pl orchestrator,services/bom-service -am verify` → BUILD SUCCESS, orchestrator **103/0/0**, bom-service **85/0/0**, warning исчез.
+
+**2) Redis rate limiter verified E2E:**
+- Redis: container `iktk-redis`, Up 9 days, порт 6379.
+- `RoutesConfig`: 5 routes с `.requestRateLimiter(...)` — orchestrator (userKeyResolver), equipment (userKeyResolver), bom/assembly/recommendation (projectKeyResolver). Casting — без RL.
+- `RedisRateLimiter(replenish, burst, 1)`, defaults 100/200, override через `iktk.gateway.rate-limit-*`.
+- **E2E:** gateway с `--iktk.gateway.rate-limit-replenish=2 --iktk.gateway.rate-limit-burst=3`, `ORCHESTRATOR_URI=9999`:
+  - `#1 status=503` (fallback при недоступном orchestrator), `X-RateLimit-Remaining: 2,1,0` (3 попытки retry × RL)
+  - `#2–#6 status=429 Too Many Requests` (burst исчерпан)
+  - Заголовки: `X-RateLimit-Replenish-Rate: 2`, `X-RateLimit-Burst-Capacity: 3`
+- Правок в коде **не потребовалось** — RL уже работает на всех 5 routes, Redis жив.
+
+**Наблюдения (by design, фиксирую):**
+- `.retry(2)` на orchestrator route даёт **3 попытки** через `requestRateLimiter` → 3 burst за один HTTP-вызов. При малом `burst` (3) — 429 уже на 2-м HTTP-вызове. Для прода с 200 burst — не проблема, но учитывать при настройке.
+- `Casting` route — без `.requestRateLimiter(...)` (не заметили в сессии 22). Если нужен — добавить по образцу. Не критично, `casting` — низконагруженный модуль.
+
+**Проверено:**
+- `mvn -pl orchestrator,services/bom-service -am verify` → BUILD SUCCESS, 103 + 85.
+- E2E: 429 получен, `X-RateLimit-*` заголовки корректны.
+
+**Что осталось:**
+- tooling-service stub (`machining` на `ToolingClientStub`).
+- integration многоуровневая, norming coverage.
+- `C.2.2` (порог complexityScore > 2 vs >= 2), `C.5.1b` (YAML-override cuttingData).
