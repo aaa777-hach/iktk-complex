@@ -1,0 +1,19 @@
+server:
+  port: 8099
+
+spring:
+  application:
+    name: tooling-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    ru.iktk.services.tooling: INFO
