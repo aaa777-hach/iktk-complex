@@ -1,25 +1,26 @@
-## 🔄 HANDOFF (обновлено 2026-10-28, сессия 27 — norming coverage: 18 → 72 теста, service-слой закрыт)
+## 🔄 HANDOFF (обновлено 2026-10-28, сессия 28 — integration multi-level STEP BOM)
 
-- **HEAD:** `git log -1` (после C1–C3 сессии 27)
-- **Текущая сессия (27) — сделано:**
-  - **`norming` — 18 → 72 теста (+54):**
-    - `TechProcessMapperTest` (14): маппинг assembly `operationType` → `Stage.OperationType` + fallback AUXILIARY, metadata, stages mapping, order.
-    - `NormingCommandConsumerTest` (8): `onCommand` demo/actual/assembly-throw-fallback/invalid-json/no-projectId/service-throw/MPP headers/null-correlationId.
-    - `TimeNormServiceTest` (19): `calculate` (validate ×4, happy ×2), `calculateStage` ACTUAL (2), CALCULATED MACHINING/CASTING/FORGING/ASSEMBLY/CONTROL/simpleOps/tpzWithTooling (7), `calculateMainTime`/`calculateAuxiliaryTime` direct (2), `resolveSource` (2).
-    - `MaterialNormServiceTest` (13): `calculate` validate ×3, `calculateBlankMass`/`calculatePartMass` (3), `calculateStageConsumption` (2), `calculateToolConsumption` (1), happy/blankMaterialCode/nullProcess/nullBatch (4).
-  - **mvn verify norming:** BUILD SUCCESS, **72/72**.
-  - **service-слой `norming` полностью покрыт:** `TechProcessMapper`, `NormingCommandConsumer`, `TimeNormService`, `MaterialNormService`. Формулы проверены: E2E-цифры совпали (`Тшт=19.26`, `Тшт.к=24.449`, `normPerPart=0.8248`, `КИМ=0.7614`).
-- **Тесты (сессия 27):** norming **72** (было 18), integration 20, assembly 67, gateway 13, auth 63, core 77, shared 90, orchestrator 103, casting 25, forging 34, machining 39, bom-service 85, equipment-service 126, recommendation 143, tooling-service 7. **Итого 964/0/0.**
-- **Все 15 модулей — production-grade по покрытию:** model + service + consumer/mapper слои покрыты.
-- **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26 `2eaea50f-...`)
+- **HEAD:** `<после коммитов, заполнишь в конце>`
+- **Сессия 28 — сделано:**
+  - **`integration` — реальный STEP-парсер (2–3 уровня сборки):**
+    - `StepAssemblyParser` — структурный парсер AP203/AP214: `PRODUCT → PRODUCT_DEFINITION_FORMATION(_WITH_SPECIFIED_SOURCE) → PRODUCT_DEFINITION → NEXT_ASSEMBLY_USAGE_OCCURRENCE`. BREP игнорируется. Стриминг `BufferedReader` (1.3 MB / 3.5 MB файлы — не грузим целиком). BFS от корня, `depth > 10` → throw, cycle-guard через `visited`. `@Component`.
+    - `RawItemDto += level` (обратносовместимо, старый `/bom` его не ставит → null).
+    - `StepBomController` — `GET /api/v1/integration/bom/step?projectId=&objectRef=` → резолв `<cad.directory>/<ref>.STEP|.step|.stp` (регистронезависимо, fallback по stem), 404 `STEP_FILE_NOT_FOUND`, 400 `INVALID_STEP`, path-traversal guard (`..`, `/`, `\` → 400). Старый `/bom` (DB-only) **не тронут**.
+    - `application.yml += integration.cad.directory: ${CAD_DIR:C:/Users/Antipovich/Desktop/Orchestr/Info/3D}`.
+  - **Тесты `integration`: 20 → 34 (+14):**
+    - `StepAssemblyParserTest` (8): 2-level, 3-level, qty27, single-part, corrupted→throw, missing-file→throw, depth>10→throw, **реальный `94.3701110-01.STEP`** → `rootId=94.3701110-01`, 1 item `94.3701110-01-00`, qty=27, level=1.
+    - `StepBomControllerTest` (6): 200 single/two-level/qty27, 404, 400 corrupted, 400 path-traversal.
+  - **mvn verify integration:** BUILD SUCCESS, **34/34**.
+  - **E2E (integration:8092):** `/bom/step?objectRef=94.3701110-01` → 200, 1 item qty=27, level=1; `94.3701401-04` → 200, 0 items; `nonexistent` → 404 + JSON; path-traversal → 400.
+- **Тесты (сессия 28):** integration **34** (было 20), norming 72, assembly 67, gateway 13, auth 63, core 77, shared 90, orchestrator 103, casting 25, forging 34, machining 39, bom-service 85, equipment-service 126, recommendation 143, tooling-service 7. **Итого 978/0/0.**
 - **Не проверено / в работе:**
-  - integration многоуровневая сборка (не про тесты — «1 геометрия = 1 деталь» → реальный BOM из CAD).
-  - machining fallback (`ToolingClientRouter` → fallback) — unit-тест есть, E2E с остановленным tooling не прогоняли.
-  - forging/machining не подключены к полному smoke (маршрут `PART_PROCESS_PLANNING` жёстко в casting).
-- **Следующий шаг:** integration многоуровневая (~1–2 сессии) / `C.2.2` (порог complexityScore) / `C.5.1b` (YAML-override cuttingData)
-- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` многоуровневая
-- **Запущено сейчас:** остановлено. При старте следующей сессии — по PROJECT.md §6.
----
+  - `orchestrator` multi-level expansion (`BomExpandHandler`) — **следующая сессия**, требует правок state machine (103 теста, риск регрессии `TransitionHandlerTest`, грабля сессии 22).
+  - `bom-service` `IntegrationClient` не вызывает `/bom/step` (только старый `/bom`).
+  - 3-уровневая иерархия — только синтетика; реальный `94.3701110-01.STEP` = 2 уровня (`PRODUCT=2`, `NAUO=27`, все NAUO parent→child одинаковые).
+  - `94.3701211-04.STEP` — geometry-only (`PRODUCT=0`, `NAUO=0`), парсер корректно бросает `IllegalArgumentException` (нет PRODUCT) → 400.
+- **Следующий шаг:** orchestrator `BomExpandHandler` (BFS по `items`, `bom-service` per-node, `decision_log` `nodes_count`/`max_level`/`errors[]`; baseline 103/0/0, +6 тестов) → E2E полного маршрута.
+- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` 3-уровневый реальный CAD, `bom-service` wiring на `/bom/step`.
+- **Запущено сейчас:** integration:8092 остановлен после E2E. При старте следующей сессии — по PROJECT.md §6.
 # Прогресс по проекту iktk-complex
 
 > Обновляйте в конце каждой сессии. Начинайте новый день с чтения — 2 минуты, и вы в контексте.
@@ -2640,3 +2641,33 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - `integration` многоуровневая сборка (функционал, не тесты).
 - `C.2.2` (порог complexityScore), `C.5.1b` (YAML-override cuttingData).
 - forging/machining в полном smoke (архитектурный маршрут `PART_PROCESS_PLANNING` → casting жёстко).
+### Обновление 2026-10-28 (сессия 28 — integration multi-level STEP BOM, 20 → 34 теста)
+
+**Цель:** многоуровневая сборка из реального STEP-файла. **Достигнуто** для integration; orchestrator expansion — следующая сессия.
+
+**Разведка (до старта):** 3 STEP-файла в `C:\Users\Antipovich\Desktop\Orchestr\Info\3D`:
+- `94.3701110-01.STEP` (1.3 MB) — AP214, `PRODUCT=2`, `PD=2`, `NAUO=27` → 2-уровневая сборка, 27 вхождений детали.
+- `94.3701401-04.STEP` (3.5 MB) — `PRODUCT=1`, `NAUO=0` → одиночная деталь.
+- `94.3701211-04.STEP` (261 KB) — `PRODUCT=0`, `NAUO=0` → geometry-only, структуры нет.
+Integration читал только PostgreSQL (`GeometryRepository`), файлы не трогал, MinIO не настроен. `RawItemDto` уже имел `parentId` + `quantity`, не хватало `level`.
+
+**Создано (integration):**
+- `parser/StepAssemblyParser.java` — стриминговый парсер (`BufferedReader`, `ISO_8859_1`), фильтр по `RELEVANT`-типам (BREP/CDSR skip), реестр `#id → Entity`, резолв `PD → PDF → PRODUCT`, рёбра через `NAUO(args[3]=parent, args[4]=child)`, группировка `merge(child, 1, Integer::sum)` → `qty`, BFS от корня (`roots = parents - children`), `depth > 10` → throw, повторное вхождение → skip+warn. `@Component`.
+- `controller/StepBomController.java` — `/bom/step`, резолв файла (ext case-insensitive + stem-fallback), 404/400 + JSON, path-traversal guard.
+- `application.yml += integration.cad.directory`.
+- `RawItemDto += level`.
+
+**Тесты:** `StepAssemblyParserTest` (8), `StepBomControllerTest` (6). `mvn verify` → **34/34**, BUILD SUCCESS.
+
+**Грабли:**
+- **`PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE`** — реальный AP214 использует подтип PDF (4 аргумента), синтетика — базовый (3). Парсер не находил PDF → `pdName.isEmpty()` → `IllegalArgumentException` на реальном файле. Фикс: `RELEVANT += WITH_SPECIFIED_SOURCE`, `pdf.type().startsWith("PRODUCT_DEFINITION_FORMATION")`. **Синтетические фикстуры не покрыли реальный подтип — тест на реальном файле обязателен.**
+- **`Get-Content` без `-Encoding UTF8`** — кракозябры в выводе кода (PS 5.1), но байты в файле корректны. Использовать `[System.IO.File]::ReadAllText(path, UTF8)`.
+- **`throw` на `git commit` без `git diff --cached --quiet`** — падает, когда коммитить нечего (рабочее дерево чисто). Правильно: сначала `git diff --cached --quiet`, `$LASTEXITCODE -eq 0` → skip.
+- **`if ($text -match 'spring-boot-starter-test')`** на pom — не сработал (CRLF/кодировка), скрипт записал байт-идентичный контент → `git status` чист. Функционально ок, но проверять `Select-String` до записи.
+- **`realStepFile_ifPresent`** — реальный файл нельзя копировать в `src/test/resources` (лицензия, 1.3 MB). Фикс: `Assumptions.assumeTrue(Files.exists(...))` + `System.getProperty("iktk.cad.dir", default)`. В CI — skip, локально — гоняется.
+- **E2E через `Invoke-RestMethod`** отдаёт тело 4xx — обёртка с `StreamReader(GetResponseStream())` (грабля сессий 22–23, повтор).
+
+**Что осталось:**
+- orchestrator `BomExpandHandler` (multi-level expansion, следующая сессия).
+- `bom-service` `IntegrationClient` → `/bom/step`.
+- `C.2.2`, `C.5.1b`.
