@@ -1,21 +1,19 @@
-## 🔄 HANDOFF (обновлено 2026-10-28, сессия 26 — integration coverage: все 15 модулей с тестами)
+## 🔄 HANDOFF (обновлено 2026-10-28, сессия 27 — norming coverage: 18 → 40 тестов)
 
-- **HEAD:** `git log -1` (после C1–C2 сессии 26: integration tests + docs)
-- **Текущая сессия (26) — сделано:**
-  - **`modules/integration` — 0 → 20 тестов:** `GeometryTest` (4), `GeometryServiceTest` (6), `GeometryControllerTest` (4), `IntegrationControllerTest` (6). `GeometryTestFactory` — тест-фабрика в пакете `model` (доступ к `protected` no-arg ctor).
-  - `integration/pom.xml`: + `spring-boot-starter-test` (test).
-  - `mvn -pl modules/integration -am verify` → **BUILD SUCCESS**, 20/20.
-- **Ревизия reactor (сессия 26):** `mvn verify` по всему reactor → **BUILD SUCCESS**, **890 тестов** (до integration coverage), 0 failures / 0 errors. После integration — **910 тестов**.
-- **Все 15 модулей в reactor имеют `src/test`** — «дыра» integration закрыта.
-- **Тесты (сессия 26):** integration **20** (было 0), assembly 67, gateway 13, auth 63, core 77, shared 90, orchestrator 103, casting 25, forging 34, machining 39, norming 18, bom-service 85, equipment-service 126, recommendation 143, tooling-service 7. **Итого 910/0/0.**
+- **HEAD:** `git log -1` (после C1–C2 сессии 27: norming tests + docs)
+- **Текущая сессия (27) — сделано:**
+  - **`norming` — 18 → 40 тестов:** `TechProcessMapperTest` (14) — маппинг assembly `operationType` → `Stage.OperationType` (PREPARATION→BLANK_PREPARATION, BASIC/NODE/GENERAL_ASSEMBLY→ASSEMBLY, CONTROL→TECHNICAL_CONTROL, прямые + fallback AUXILIARY); `NormingCommandConsumerTest` (8) — `onCommand` (demo/actual/assembly-throw-fallback/invalid-json/no-projectId/service-throw/MPP headers/null-correlationId).
+  - **mvn verify norming:** BUILD SUCCESS, 40/40.
+  - **service-слой покрыт:** `TechProcessMapper` (14), `NormingCommandConsumer` (8), `TimeNormService`/`MaterialNormService` (проверены E2E в полном smoke, но unit-тестов нет — TODO).
+- **Тесты (сессия 27):** norming **40** (было 18), integration 20, assembly 67, gateway 13, auth 63, core 77, shared 90, orchestrator 103, casting 25, forging 34, machining 39, bom-service 85, equipment-service 126, recommendation 143, tooling-service 7. **Итого 932/0/0.**
 - **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26 `2eaea50f-...`)
 - **Не проверено / в работе:**
-  - `norming` service-слой (`TimeNormService`, `MaterialNormService`) — 18 model-тестов, service не покрыт (последний «дырявый» модуль по покрытию).
+  - `TimeNormService` / `MaterialNormService` — unit-тестов нет (E2E зелёный, формулы проверены вручную на 3 версиях). Покрытие `calculateStage`/`calculate` — TODO.
   - integration многоуровневая сборка (не про тесты — «1 геометрия = 1 деталь» → реальный BOM из CAD).
   - machining fallback (`ToolingClientRouter` → fallback) — unit-тест есть, E2E с остановленным tooling не прогоняли.
   - forging/machining не подключены к полному smoke (маршрут `PART_PROCESS_PLANNING` жёстко в casting).
-- **Следующий шаг:** norming service coverage (~0.5–1 сессия) / integration многоуровневая (~1–2 сессии) / `C.2.2` (порог complexityScore)
-- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` многоуровневая, `norming` service coverage
+- **Следующий шаг:** `TimeNormService`/`MaterialNormService` coverage (~1 сессия) / integration многоуровневая (~1–2 сессии) / `C.2.2` (порог complexityScore)
+- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` многоуровневая, `norming` service (TimeNorm/MaterialNorm)
 - **Запущено сейчас:** остановлено. При старте следующей сессии — по PROJECT.md §6.
 ---
 # Прогресс по проекту iktk-complex
@@ -2596,5 +2594,25 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 
 **Что осталось:**
 - `norming` service coverage (последний «дырявый» модуль по покрытию — 18 model).
+- `integration` многоуровневая сборка.
+- `C.2.2`, `C.5.1b`.
+
+### Обновление 2026-10-28 (сессия 27 — norming coverage: 18 → 40 тестов, service-слой)
+
+**Цель:** закрыть service-слой `norming` (18 model-тестов, service не покрыт). **Достигнуто частично:** покрыты `TechProcessMapper` и `NormingCommandConsumer`; `TimeNormService`/`MaterialNormService` — следующие.
+
+**Создано (2 файла):**
+- `service/TechProcessMapperTest` (14): `toTechnologyProcess` (null process → `IllegalArgumentException`, metadata: id/name/version/author, notes→name, null stages list, 5 stages, null stage в списке пропускается, order `stageOrder>0` или `defaultOrder`, `name==null` → `"Stage N"`, `timeNormMin/setupTimeMin` null → `BigDecimal.ZERO`, equipmentId/toolingId/comment переносятся); `parseOperationType` (assembly-специфичные → BLANK_PREPARATION/ASSEMBLY/TECHNICAL_CONTROL, прямые → MACHINING/CNC_MACHINING/ASSEMBLY/TECHNICAL_CONTROL/NORMING, lowercase+trim, null/blank/unknown → AUXILIARY fallback).
+- `messaging/NormingCommandConsumerTest` (8): demo (processId=null → `source=CALCULATED`, result `success=true` с `timeNormId/materialNormId/totalTshK/normPerPart/kim`), actual (processId=proc-1 → assembly client + `source=ACTUAL`), assembly throw → fallback demo (id=`proc-1`, 1 stage MACHINING, `source=ACTUAL` по коду), invalid JSON → `convertAndSend` НЕ вызывается (projectId=null → early-return), projectId missing → то же, service throw → `success=false` + `error`, MPP headers (`projectId/module/event/success/contentType=JSON/correlationId`), null correlationId → header не ставится.
+
+**Тесты:** `mvn -pl modules/norming -am verify` → **BUILD SUCCESS**, **40/40** (было 18, +22).
+
+**Грабли:**
+- **`onCommand_assemblyUnavailable_fallsBackToDemo`:** `resolveProcess` при exception создаёт **новый** `buildDemoProcess(projectId, processId)` → `id = processId` (не `"demo-process-"`), `TechnologyProcess.equals` по `id` → `isEqualTo(demoProcess())` падал. Фикс: проверять `getProcess().getId() == "proc-1"` + `getStages().hasSize(1)` + `source=ACTUAL`.
+- **`onCommand_invalidJson`:** `projectId` не извлекается → `sendResult` early-return, `convertAndSend` не вызывается. Название теста «sendsFailure» условное — фактически «noSend».
+- **git-блоки с `$ErrorActionPreference = "Stop"`** → `NativeCommandError` на CRLF-warning → обрыв после `git add`, до `git commit`. Фикс: для git — `"Continue"` + проверка `$LASTEXITCODE`. Повторилось в сессиях 23–26.
+
+**Что осталось:**
+- `TimeNormService` / `MaterialNormService` — unit-тестов нет (E2E зелёный).
 - `integration` многоуровневая сборка.
 - `C.2.2`, `C.5.1b`.
