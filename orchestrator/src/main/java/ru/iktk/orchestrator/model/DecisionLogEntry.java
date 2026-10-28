@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Index;
@@ -11,7 +13,6 @@ import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.util.Map;
-import jakarta.persistence.Transient;
 
 @Entity
 @Table(
@@ -37,8 +38,8 @@ public class DecisionLogEntry {
     @Column(name = "actor", nullable = false, length = 128)
     private String actor;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload", columnDefinition = "jsonb")
-    @Transient
     private Map<String, Object> payload;
 
     @Column(name = "created_at", nullable = false)

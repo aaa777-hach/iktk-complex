@@ -75,6 +75,15 @@ public class OrchestrationService {
             initialPayload.put("assemblyId", request.getAssemblyId());
         }
 
+                // ===== TP =====
+        boolean isAssembly = request.getObjectType() == ru.iktk.core.domain.Project.ObjectType.ASSEMBLY;
+        String tpType = resolveAndValidateTp(request.getPlannedProcessTypes(), isAssembly);
+        if (tpType != null) {
+            initialPayload.put("tpType", tpType);
+            initialPayload.put("tpSource", "USER");
+            log.info("startProject: tpType={}, objectType={}", tpType, request.getObjectType());
+        }
+
         ProjectRuntime runtime = ProjectRuntime.builder()
                 .projectId(projectId)
                 .projectName(request.getProjectName())
@@ -92,7 +101,7 @@ public class OrchestrationService {
         dispatchEvent(projectId, sm, ProjectEvent.START_GEOMETRY_INPUT, null);
 
         decisionLogService.log(projectId, "PROJECT_STARTED",
-                Map.of("requestedBy", request.getRequestedBy()), currentActor());
+                Map.of("requestedBy", String.valueOf(request.getRequestedBy())), currentActor());
 
         return buildResponse(runtime, sm);
     }
@@ -287,7 +296,7 @@ public class OrchestrationService {
 
 
         if (transitionHandler.isAutoState(newState)) {
-            transitionHandler.route(projectId, newState, sm, payload);
+            transitionHandler.route(projectId, newState, sm, loadRuntime(projectId).getPayload());
         }        if (transitionHandler.isAutoState(newState)) {
             ProjectEvent autoEvent = transitionHandler.nextAuto(newState);
 
@@ -355,6 +364,34 @@ public class OrchestrationService {
                 .availableEvents(transitionHandler.availableEvents(state))
                 .updatedAt(runtime.getUpdatedAt())
                 .build();
+    }
+
+        private String resolveAndValidateTp(java.util.List<String> plannedProcessTypes, boolean isAssembly) {
+        if (isAssembly) {
+            if (plannedProcessTypes != null && !plannedProcessTypes.isEmpty()) {
+                log.warn("startProject: objectType=ASSEMBLY, plannedProcessTypes={} ignored", plannedProcessTypes);
+            }
+            return null;
+        }
+        if (plannedProcessTypes == null || plannedProcessTypes.isEmpty()) {
+            throw new OrchestrationException(
+                    "\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u0422\u041f \u0438\u0437\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u0434\u0435\u0442\u0430\u043b\u0438: plannedProcessTypes \u043d\u0435 \u043f\u0435\u0440\u0435\u0434\u0430\u043d. \u0414\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435: CASTING, FORGING, MACHINING");
+        }
+        if (plannedProcessTypes.size() > 1) {
+            throw new OrchestrationException(
+                    "\u0414\u043b\u044f \u043e\u0434\u043d\u043e\u0439 \u0434\u0435\u0442\u0430\u043b\u0438 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044f \u043e\u0434\u0438\u043d \u0422\u041f; \u043f\u0435\u0440\u0435\u0434\u0430\u043d\u043e " + plannedProcessTypes.size());
+        }
+        String tp = plannedProcessTypes.get(0);
+        if (tp == null || tp.isBlank()) {
+            throw new OrchestrationException(
+                    "plannedProcessTypes \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 \u043f\u0443\u0441\u0442\u043e\u0435 \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435; \u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435: CASTING, FORGING, MACHINING");
+        }
+        String normalized = tp.trim().toUpperCase(java.util.Locale.ROOT);
+        return switch (normalized) {
+            case "CASTING", "FORGING", "MACHINING" -> normalized;
+            default -> throw new OrchestrationException(
+                    "\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u0422\u041f: " + tp + ". \u0414\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435: CASTING, FORGING, MACHINING");
+        };
     }
 
     private void validateRequest(OrchestrationRequest request) {

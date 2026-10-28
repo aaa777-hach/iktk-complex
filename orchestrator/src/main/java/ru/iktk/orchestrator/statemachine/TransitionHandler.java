@@ -86,7 +86,31 @@ public class TransitionHandler {
                       ProjectState state,
                       StateMachine<ProjectState, ProjectEvent> sm,
                       Map<String, ?> payload) {
-        String module = ROUTES.get(state);
+                String module = ROUTES.get(state);
+
+        if (state == ProjectState.PART_PROCESS_PLANNING) {
+            String tpType = payload == null ? null : String.valueOf(payload.get("tpType"));
+            if (tpType != null && !tpType.isBlank() && !"null".equals(tpType)) {
+                String routed = switch (tpType.toUpperCase(java.util.Locale.ROOT)) {
+                    case "CASTING"   -> "casting";
+                    case "FORGING"   -> "forging";
+                    case "MACHINING" -> "machining";
+                    default          -> null;
+                };
+                if (routed != null) {
+                    module = routed;
+                    decisionLogService.log(projectId, "PART_PROCESS_PLANNING",
+                            Map.of("tp", tpType.toUpperCase(java.util.Locale.ROOT),
+                                    "source", (payload.get("tpSource") != null ? String.valueOf(payload.get("tpSource")) : "USER"),
+                                    "module", module),
+                            "SYSTEM");
+                } else {
+                    log.warn("route: PART_PROCESS_PLANNING, unknown tpType={} (projectId={}) - fallback", tpType, projectId);
+                }
+            } else {
+                log.warn("route: PART_PROCESS_PLANNING without tpType (projectId={}) - fallback", projectId);
+            }
+        }
 
         if (module == null) {
             if (state.isTerminal()) {

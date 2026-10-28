@@ -128,6 +128,7 @@ class OrchestrationServiceTest {
                     .designation("КР-001")
                     .objectType(Project.ObjectType.ASSEMBLY)
                     .requestedBy(REQUESTED_BY)
+                    .plannedProcessTypes(java.util.List.of("CASTING"))
                     .build();
 
             when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class)))
@@ -546,6 +547,7 @@ class OrchestrationServiceTest {
                     .projectName(PROJECT_NAME)
                     .geometryId("geom-42")
                     .requestedBy(REQUESTED_BY)
+                    .plannedProcessTypes(java.util.List.of("CASTING"))
                     .build();
 
             when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class)))
@@ -632,4 +634,15 @@ class OrchestrationServiceTest {
             verify(decisionLogService).log(
                     eq(PROJECT_ID), eq("ORCHESTRATION_RUN"), any(Map.class), eq("user-777"));
         }
-    }}
+    }    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("startProject: PART without plannedProcessTypes throws")
+    void startProject_partWithoutTp_throws() {
+        OrchestrationRequest request = OrchestrationRequest.builder()
+                .projectName("Part")
+                .objectType(Project.ObjectType.PART)
+                .build();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> orchestrationService.startProject(request))
+                .isInstanceOf(OrchestrationException.class)
+                .hasMessageContaining("plannedProcessTypes");
+    }
+}

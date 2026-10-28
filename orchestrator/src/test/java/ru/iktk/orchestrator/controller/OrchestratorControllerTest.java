@@ -179,4 +179,15 @@ class OrchestratorControllerTest {
                 .andExpect(jsonPath("$.error").value("ORCHESTRATION_ERROR"))
                 .andExpect(jsonPath("$.message").value("нет проекта"));
     }
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("POST /projects -> 422 on OrchestrationException")
+    void createProject_withoutTp_returns422() throws Exception {
+        when(orchestrationService.startProject(any())).thenThrow(new OrchestrationException("TP required"));
+        OrchestrationRequest req = OrchestrationRequest.builder().projectName("Test").build();
+        mvc.perform(post("/api/v1/orchestrator/projects")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("ORCHESTRATION_ERROR"));
+    }
 }

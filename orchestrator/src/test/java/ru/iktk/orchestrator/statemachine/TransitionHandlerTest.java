@@ -282,4 +282,13 @@ class TransitionHandlerTest {
             assertThat(e.getMessage()).contains("Не определён маршрут");
         }
     }
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("route: PART_PROCESS_PLANNING -> route by tpType")
+    void route_partProcessPlanning_routesByTpType() {
+        handler.route("p1", ProjectState.PART_PROCESS_PLANNING, stateMachine, Map.of("tpType", "FORGING"));
+        verify(moduleCommandProducer).send(eq("p1"), eq("forging"), eq(ProjectState.PART_PROCESS_PLANNING), any());
+        
+        handler.route("p1", ProjectState.PART_PROCESS_PLANNING, stateMachine, Map.of("tpType", "MACHINING"));
+        verify(moduleCommandProducer).send(eq("p1"), eq("machining"), eq(ProjectState.PART_PROCESS_PLANNING), any());
+    }
 }
