@@ -1,20 +1,22 @@
-## 🔄 HANDOFF (обновлено 2026-10-28, сессия 25 — tooling-service + machining Feign)
+## 🔄 HANDOFF (обновлено 2026-10-28, сессия 26 — integration coverage: все 15 модулей с тестами)
 
-- **HEAD:** `git log -1` (после C1–C3 сессии 25: `tooling` + `machining` + docs)
-- **Текущая сессия (25) — сделано:**
-  - **Новый модуль `services/tooling-service` (порт 8099):** `GET /api/v1/tooling/select?method=&material=` → 200 + `CuttingTool` JSON, 204 для `CONTROL`, 400 для неизвестного. 7 тестов (`ToolingControllerTest`, `@WebMvcTest`). Зарегистрирован в корневом `pom.xml`.
-  - **machining → tooling через Feign:** `ToolingClient` → `@FeignClient(name="tooling", url="${iktk.machining.tooling.url:http://localhost:8099}")`, `ToolingClientRouter` (Feign → fallback), `ToolingClientStub` удалён, `MachiningProcessService` инжектит Router.
-  - `machining/application.yml`: `+iktk.machining.tooling.url`.
-  - `ToolingClientRouterTest` (4 теста).
-- **Тесты (сессия 25):** machining **39/39** (было 35), tooling-service **7/7**, gateway 13, orchestrator 103/0/0, assembly 67, core 77, shared 90, auth 63, forging 34, casting 25, norming 18, recommendation 143, equipment 126
-- **E2E (сессия 25):** `iktk.command.machining` → machining → `ToolingService.select` × 5 (Feign OK, **не fallback**) → `cnc_program.operations[].tool.type = ["END_MILL","DRILL","END_MILL","END_MILL","GRINDING_WHEEL"]`, `valid=true`, MinIO `s3://iktk/...nc`
-- **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26)
+- **HEAD:** `git log -1` (после C1–C2 сессии 26: integration tests + docs)
+- **Текущая сессия (26) — сделано:**
+  - **`modules/integration` — 0 → 20 тестов:** `GeometryTest` (4), `GeometryServiceTest` (6), `GeometryControllerTest` (4), `IntegrationControllerTest` (6). `GeometryTestFactory` — тест-фабрика в пакете `model` (доступ к `protected` no-arg ctor).
+  - `integration/pom.xml`: + `spring-boot-starter-test` (test).
+  - `mvn -pl modules/integration -am verify` → **BUILD SUCCESS**, 20/20.
+- **Ревизия reactor (сессия 26):** `mvn verify` по всему reactor → **BUILD SUCCESS**, **890 тестов** (до integration coverage), 0 failures / 0 errors. После integration — **910 тестов**.
+- **Все 15 модулей в reactor имеют `src/test`** — «дыра» integration закрыта.
+- **Тесты (сессия 26):** integration **20** (было 0), assembly 67, gateway 13, auth 63, core 77, shared 90, orchestrator 103, casting 25, forging 34, machining 39, norming 18, bom-service 85, equipment-service 126, recommendation 143, tooling-service 7. **Итого 910/0/0.**
+- **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26 `2eaea50f-...`)
 - **Не проверено / в работе:**
-  - machining fallback (Feign throw → fallback) — unit-тест есть, E2E с остановленным tooling не проверяли
-  - integration многоуровневая, norming coverage
-- **Следующий шаг:** norming coverage / integration многоуровневая / `C.2.2`
-- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` многоуровневая, `norming` coverage
-- **Запущено сейчас:** orchestrator:8080 (PID 20004), auth:8081 (PID 2344). machining/tooling остановлены после E2E.
+  - `norming` service-слой (`TimeNormService`, `MaterialNormService`) — 18 model-тестов, service не покрыт (последний «дырявый» модуль по покрытию).
+  - integration многоуровневая сборка (не про тесты — «1 геометрия = 1 деталь» → реальный BOM из CAD).
+  - machining fallback (`ToolingClientRouter` → fallback) — unit-тест есть, E2E с остановленным tooling не прогоняли.
+  - forging/machining не подключены к полному smoke (маршрут `PART_PROCESS_PLANNING` жёстко в casting).
+- **Следующий шаг:** norming service coverage (~0.5–1 сессия) / integration многоуровневая (~1–2 сессии) / `C.2.2` (порог complexityScore)
+- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` многоуровневая, `norming` service coverage
+- **Запущено сейчас:** остановлено. При старте следующей сессии — по PROJECT.md §6.
 ---
 # Прогресс по проекту iktk-complex
 
@@ -2569,3 +2571,30 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - ToolingClientRouter fallback — unit-тест `feignThrows_fallsBack`, E2E не проверяли.
 
 **Что осталось:** norming coverage, integration многоуровневая, `C.2.2`, `C.5.1b`.
+
+### Обновление 2026-10-28 (сессия 26 — integration coverage: 0 → 20 тестов, все 15 модулей с src/test)
+
+**Цель:** закрыть последний модуль без `src/test` — `modules/integration`. **Достигнуто.**
+
+**Ревизия (до старта):** `mvn verify` весь reactor → BUILD SUCCESS, **890 тестов**, 0 failures / 0 errors. Факт совпал с PROGRESS. Единственный модуль без surefire-reports — `modules/integration`.
+
+**Создано (5 файлов):**
+- `model/GeometryTest` (4): геттеры, defaults, protected no-arg ctor (reflection), `complexityScore` — примитив `int`.
+- `model/GeometryTestFactory` — фабрика в пакете `model` (protected ctor недоступен из других пакетов).
+- `service/GeometryServiceTest` (6): null/blank `objectRef` → `"default-object"` → not-found → null; found → `Map` **11 полей** (без `projectId`), `LinkedHashMap` порядок (`objectRef` первый, `hotSpots` последний); not-found → null; repository вызван 1 раз.
+- `controller/GeometryControllerTest` (4, `@WebMvcTest` + `@MockBean GeometryService`): found → 200 + JSON, not-found → 404, без `objectRef` → `isNull()` → 200/404.
+- `controller/IntegrationControllerTest` (6, `@WebMvcTest` + `@MockBean GeometryRepository`): `/cad-system` → 200 `"STEP"`, `/connections` → 200 `[]`, `/bom` found → 200 + RawBomDto (1 item), not-found → 404, без/blank `geometryId` → default `"geo-12345"`.
+
+**Правки (1 файл):** `integration/pom.xml` → `+spring-boot-starter-test` (test).
+
+**Тесты:** `mvn -pl modules/integration -am verify` → **BUILD SUCCESS**, **20/20**.
+
+**Грабли:**
+- **`protected Geometry()`** — JPA-требование, но из других пакетов недоступен → `GeometryTestFactory` в пакете `model`, `public static newGeometry()`. Не менять main-код ради тестов.
+- **`@WebMvcTest`** без `@Import` — `IntegrationController` инжектит `GeometryRepository` (не Service), поэтому `@MockBean` именно на репозиторий.
+- **`assertThat(body.get("undercuts")).isEqualTo(false)`** — `get()` → `Object`, autoboxing в `Boolean.FALSE`, AssertJ справился.
+
+**Что осталось:**
+- `norming` service coverage (последний «дырявый» модуль по покрытию — 18 model).
+- `integration` многоуровневая сборка.
+- `C.2.2`, `C.5.1b`.
