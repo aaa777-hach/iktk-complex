@@ -1,18 +1,20 @@
-## 🔄 HANDOFF (обновлено 2026-10-28, сессия 24 — Redis rate limiter verified + H2Dialect clean)
+## 🔄 HANDOFF (обновлено 2026-10-28, сессия 25 — tooling-service + machining Feign)
 
-- **HEAD:** `git log -1` (после C1–C2 сессии 24: `a1b77b5` + docs)
-- **Текущая сессия (24) — сделано:**
-  - **`application-test.yml` clean:** убран явный `database-platform: org.hibernate.dialect.H2Dialect` в `orchestrator` и `services/bom-service` (Spring Boot 3.3.5 + Hibernate 6 определяет диалект по URL). Warning `HHH90000025` исчез. verify: orchestrator **103/0/0**, bom-service **85/0/0**, BUILD SUCCESS.
-  - **Redis rate limiter проверен E2E:** gateway с override `--iktk.gateway.rate-limit-replenish=2 --iktk.gateway.rate-limit-burst=3`. Результат: `X-RateLimit-Remaining` 2→1→0, **429 Too Many Requests** получен, `X-RateLimit-Replenish-Rate: 2`, `X-RateLimit-Burst-Capacity: 3` в заголовках. Правок в коде **не потребовалось** — `RoutesConfig` + `RedisRateLimiter` уже работают, Redis жив (container `iktk-redis`, Up 9 days).
-- **Тесты:** gateway **13** (10 AuthFilter + 3 Fallback), orchestrator **103/0/0**, bom-service **85/0/0**, assembly 67, core 77, shared 90, auth 63, machining 35, forging 34, casting 25, norming 18, recommendation 143, equipment 126
-- **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26 `2eaea50f-...`)
+- **HEAD:** `git log -1` (после C1–C3 сессии 25: `tooling` + `machining` + docs)
+- **Текущая сессия (25) — сделано:**
+  - **Новый модуль `services/tooling-service` (порт 8099):** `GET /api/v1/tooling/select?method=&material=` → 200 + `CuttingTool` JSON, 204 для `CONTROL`, 400 для неизвестного. 7 тестов (`ToolingControllerTest`, `@WebMvcTest`). Зарегистрирован в корневом `pom.xml`.
+  - **machining → tooling через Feign:** `ToolingClient` → `@FeignClient(name="tooling", url="${iktk.machining.tooling.url:http://localhost:8099}")`, `ToolingClientRouter` (Feign → fallback), `ToolingClientStub` удалён, `MachiningProcessService` инжектит Router.
+  - `machining/application.yml`: `+iktk.machining.tooling.url`.
+  - `ToolingClientRouterTest` (4 теста).
+- **Тесты (сессия 25):** machining **39/39** (было 35), tooling-service **7/7**, gateway 13, orchestrator 103/0/0, assembly 67, core 77, shared 90, auth 63, forging 34, casting 25, norming 18, recommendation 143, equipment 126
+- **E2E (сессия 25):** `iktk.command.machining` → machining → `ToolingService.select` × 5 (Feign OK, **не fallback**) → `cnc_program.operations[].tool.type = ["END_MILL","DRILL","END_MILL","END_MILL","GRINDING_WHEEL"]`, `valid=true`, MinIO `s3://iktk/...nc`
+- **Работает end-to-end:** orchestrator → bom → casting → recommendation → assembly → norming → COMPLETED (smoke 2026-10-26)
 - **Не проверено / в работе:**
-  - tooling-service не существует (`machining` на `ToolingClientStub`)
-  - integration многоуровневая сборка, norming coverage
-  - `.retry(2)` на orchestrator route: 3 попытки × `requestRateLimiter` = 3 burst за один HTTP-вызов (by design, но требует больше burst при малых значениях)
-- **Следующий шаг:** tooling-service stub / norming coverage / integration многоуровневая
-- **Открытые техдолги:** `C.2.2` (порог complexityScore), `C.5.1b` (YAML-override cuttingData), `tooling-service`, `integration` многоуровневая
-- **Запущено сейчас:** остановлено (gateway остановлен, env `ORCHESTRATOR_URI` сброшен). auth:8081 — статус неизвестен, при следующем старте — по PROJECT.md §6.
+  - machining fallback (Feign throw → fallback) — unit-тест есть, E2E с остановленным tooling не проверяли
+  - integration многоуровневая, norming coverage
+- **Следующий шаг:** norming coverage / integration многоуровневая / `C.2.2`
+- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` многоуровневая, `norming` coverage
+- **Запущено сейчас:** orchestrator:8080 (PID 20004), auth:8081 (PID 2344). machining/tooling остановлены после E2E.
 ---
 # Прогресс по проекту iktk-complex
 
@@ -2540,3 +2542,30 @@ mvn -pl services/recommendation-service spring-boot:run 2>&1 | Tee-Object -FileP
 - tooling-service stub (`machining` на `ToolingClientStub`).
 - integration многоуровневая, norming coverage.
 - `C.2.2` (порог complexityScore > 2 vs >= 2), `C.5.1b` (YAML-override cuttingData).
+
+### Обновление 2026-10-28 (сессия 25 — tooling-service + machining Feign, E2E)
+
+**Цель:** закрыть техдолг «tooling-service не существует» (machining на `ToolingClientStub`). **Достигнуто.**
+
+**Создано — `services/tooling-service` (8 файлов, порт 8099):**
+- `pom.xml`, `ToolingServiceApplication`, `ToolingMethod` (enum), `ToolingService` (switch по методу), `CuttingToolDto` (Jackson), `ToolingController` (`GET /api/v1/tooling/select` → 200/204/400), `application.yml`, `ToolingControllerTest` (7).
+- Зарегистрирован в корневом `pom.xml`.
+
+**Правки в machining (7 файлов):**
+- `ToolingClient` → `@FeignClient(name="tooling")`.
+- `ToolingClientStub` — удалён.
+- `ToolingClientRouter` (новый) — Feign → fallback.
+- `client/dto/ToolingDto` (новый).
+- `MachiningProcessService` — Router.
+- `application.yml` — `tooling.url`.
+- `ToolingClientRouterTest` (4).
+
+**Тесты:** machining **39/39** (было 35, +4), tooling-service **7/7**.
+
+**E2E:** `iktk.command.machining` → machining → `ToolingService.select` × 5 (Feign OK) → `tool.type = [END_MILL, DRILL, END_MILL, END_MILL, GRINDING_WHEEL]`, `valid=true`.
+
+**Грабли:**
+- `mvn -pl modules/machining,services/tooling-service` — запятая работает.
+- ToolingClientRouter fallback — unit-тест `feignThrows_fallsBack`, E2E не проверяли.
+
+**Что осталось:** norming coverage, integration многоуровневая, `C.2.2`, `C.5.1b`.
