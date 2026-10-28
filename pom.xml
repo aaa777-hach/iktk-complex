@@ -40,6 +40,7 @@
     <module>services/bom-service</module>
     <module>modules/assembly-process-service</module>
     <module>services/recommendation-service</module>
+    <module>services/tooling-service</module>
     </modules>
     <dependencyManagement>
         <dependencies>

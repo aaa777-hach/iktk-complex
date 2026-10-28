@@ -46,6 +46,8 @@ iktk:
   machining:
     integration:
       url: ${IKTK_INTEGRATION_URL:http://localhost:8092}
+    tooling:
+      url: ${IKTK_MACHINING_TOOLING_URL:http://localhost:8099}
     equipment:
       url: ${IKTK_EQUIPMENT_URL:http://localhost:8094}
     storage:

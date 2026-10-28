@@ -9,7 +9,7 @@ import ru.iktk.core.domain.TechnologyProcess;
 import ru.iktk.core.exception.OrchestrationException;
 import ru.iktk.modules.machining.client.EquipmentClient;
 import ru.iktk.modules.machining.client.GeometryClientRouter;
-import ru.iktk.modules.machining.client.ToolingClient;
+import ru.iktk.modules.machining.client.ToolingClientRouter;
 import ru.iktk.modules.machining.config.MachiningProperties;
 import ru.iktk.modules.machining.dto.GeometryData;
 import ru.iktk.modules.machining.dto.ManufacturabilityReport;
@@ -47,7 +47,7 @@ import java.util.UUID;
  *   <li><b>Планирование операций и переходов</b> — последовательность
  *       черновой, получистовой, чистовой обработки.</li>
  *   <li><b>Выбор оборудования и инструмента</b> — через
- *       {@link EquipmentClient} и {@link ToolingClient}.</li>
+ *       {@link EquipmentClient} и {@link ToolingClientRouter}.</li>
  *   <li><b>Расчёт режимов резания</b> — скорость, подача, глубина,
  *       стойкость инструмента.</li>
  *   <li><b>Формирование этапов ТП</b> — операции механообработки.</li>
@@ -72,7 +72,7 @@ import java.util.UUID;
  *   <li>получает команду от оркестратора;</li>
  *   <li>запрашивает геометрию через {@link GeometryClientRouter};</li>
  *   <li>проверяет оборудование через {@link EquipmentClient};</li>
- *   <li>подбирает инструмент через {@link ToolingClient};</li>
+ *   <li>подбирает инструмент через {@link ToolingClientRouter};</li>
  *   <li>сохраняет результат в {@link MachiningProcessRepository};</li>
  *   <li>публикует событие {@code PART_PROCESS_READY} в оркестратор.</li>
  * </ul>
@@ -85,13 +85,13 @@ public class MachiningProcessService {
     private final MachiningProcessRepository repository;
     private final GeometryClientRouter geometryClient;
     private final EquipmentClient equipmentClient;
-    private final ToolingClient toolingClient;
+    private final ToolingClientRouter toolingClient;
     private final MachiningProperties properties;
 
     public MachiningProcessService(MachiningProcessRepository repository,
                                    GeometryClientRouter geometryClient,
                                    EquipmentClient equipmentClient,
-                                   ToolingClient toolingClient,
+                                   ToolingClientRouter toolingClient,
                                    MachiningProperties properties) {
         this.repository = repository;
         this.geometryClient = geometryClient;
