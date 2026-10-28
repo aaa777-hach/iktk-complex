@@ -42,3 +42,9 @@ handoff-*.md
 # stderr-логи spring-boot:run (PS 5.1 RedirectStandardError)
 *.log.err
 *.err
+
+# session scratch (step-scripts, backups, archive)
+step*.ps1
+*.bak
+*.orig
+_archive-*/
