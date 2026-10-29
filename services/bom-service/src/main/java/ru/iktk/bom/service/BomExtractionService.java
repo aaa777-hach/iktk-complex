@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
 
 /**
  * Сервис извлечения BOM (Bill of Materials) из CAD-систем ИКТК.
@@ -186,6 +187,14 @@ public class BomExtractionService {
      * Извлечь «сырую» структуру BOM через {@link IntegrationClient}.
      */
     private RawBom extractRawBom(String projectId, String geometryId, String cadSystem) {
+        // 1. Сначала пробуем /bom/step (многоуровневый STEP-парсер, сессия 28)
+        if (geometryId != null && !geometryId.isBlank()) {
+            Optional<RawBom> stepBom = tryFetchStepBom(projectId, geometryId);
+            if (stepBom.isPresent()) {
+                return stepBom.get();
+            }
+        }
+        // 2. Fallback: старый /bom (DB-only)
         int maxAttempts = properties.getExtractionRetry() > 0
                 ? properties.getExtractionRetry() : 3;
 
@@ -225,6 +234,31 @@ public class BomExtractionService {
         }
     }
 
+
+    /**
+     * Попытка получить многоуровневый BOM из реального STEP-файла (сессия 28).
+     * Пустой / недоступный STEP -> Optional.empty(), fallback на /bom.
+     */
+    private Optional<RawBom> tryFetchStepBom(String projectId, String objectRef) {
+        try {
+            RawBom bom = integrationClient.fetchStepBom(projectId, objectRef);
+            if (bom == null || bom.getItems() == null || bom.getItems().isEmpty()) {
+                log.info("tryFetchStepBom: /bom/step пуст, objectRef={}, fallback на /bom", objectRef);
+                return Optional.empty();
+            }
+            log.info("tryFetchStepBom: /bom/step OK, objectRef={}, root={}, items={}",
+                    objectRef, bom.getRootId(), bom.getItems().size());
+            return Optional.of(bom);
+        } catch (feign.FeignException.NotFound | feign.FeignException.BadRequest e) {
+            log.info("tryFetchStepBom: /bom/step {} для objectRef={}, fallback на /bom",
+                    e.status(), objectRef);
+            return Optional.empty();
+        } catch (Exception e) {
+            log.warn("tryFetchStepBom: /bom/step ошибка для objectRef={}, fallback на /bom: {}",
+                    objectRef, e.getMessage());
+            return Optional.empty();
+        }
+    }
     // ==================================================================
     // 4. Нормализация
     // ==================================================================

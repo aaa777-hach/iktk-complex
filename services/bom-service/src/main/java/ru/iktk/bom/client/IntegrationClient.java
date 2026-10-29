@@ -37,4 +37,12 @@ public interface IntegrationClient {
     List<RawConnection> extractConnections(@RequestParam("projectId") String projectId,
                                            @RequestParam(value = "geometryId", required = false) String geometryId,
                                            @RequestParam(value = "cadSystem", required = false) String cadSystem);
+
+    /**
+     * Извлечь многоуровневую структуру BOM из реального STEP-файла (сессия 28).
+     * Резолвит objectRef -> файл в integration.cad.directory.
+     */
+    @GetMapping("/api/v1/integration/bom/step")
+    RawBom fetchStepBom(@RequestParam("projectId") String projectId,
+                        @RequestParam("objectRef") String objectRef);
 }

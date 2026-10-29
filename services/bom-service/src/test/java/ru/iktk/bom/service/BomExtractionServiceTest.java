@@ -256,4 +256,79 @@ class BomExtractionServiceTest {
         service.extract("proj1", "geo-1", "SIEMENS");
         verify(integrationClient).extractConnections(anyString(), anyString(), eq("SIEMENS"));
     }
+
+    // ===== extract: /bom/step (сессия 31) =====
+
+    @Test
+    @DisplayName("/bom/step: успех -> старый /bom не вызывается")
+    void extract_stepBom_success_noFallback() {
+        RawItem i1 = rawItem("s1", null, "СБ-STEP", 1, "ASSEMBLY", true);
+        RawItem i2 = rawItem("s2", "s1", "Д-STEP", 2, "PART", false);
+        RawBom stepBom = new RawBom("step-root", "СБ-STEP", "Корпус STEP", List.of(i1, i2));
+        when(integrationClient.fetchStepBom(eq("proj1"), eq("geo-1"))).thenReturn(stepBom);
+        when(integrationClient.detectCadSystem(anyString(), anyString())).thenReturn("SIEMENS");
+        when(integrationClient.extractConnections(anyString(), anyString(), eq("SIEMENS"))).thenReturn(List.of());
+
+        BomService.BomExtractionResult result = service.extract("proj1", "geo-1", "SIEMENS");
+
+        assertThat(result.getItems()).hasSize(2);
+        assertThat(result.getRootDesignation()).isEqualTo("СБ-STEP");
+        verify(integrationClient, never()).extractBom(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("/bom/step: пустой items -> fallback на старый /bom")
+    void extract_stepBom_emptyItems_fallbackToLegacy() {
+        RawBom emptyStep = new RawBom("step-root", "СБ-STEP", "Empty", List.of());
+        RawItem oldItem = rawItem("i1", null, "Д-OLD", 1, "PART", false);
+        RawBom legacyBom = new RawBom("old-root", "СБ-OLD", "Legacy", List.of(oldItem));
+        when(integrationClient.fetchStepBom(anyString(), anyString())).thenReturn(emptyStep);
+        when(integrationClient.detectCadSystem(anyString(), anyString())).thenReturn("SIEMENS");
+        when(integrationClient.extractBom(anyString(), anyString(), eq("SIEMENS"))).thenReturn(legacyBom);
+        when(integrationClient.extractConnections(anyString(), anyString(), eq("SIEMENS"))).thenReturn(List.of());
+
+        BomService.BomExtractionResult result = service.extract("proj1", "geo-1", "SIEMENS");
+
+        assertThat(result.getRootDesignation()).isEqualTo("СБ-OLD");
+        assertThat(result.getItems()).hasSize(1);
+        verify(integrationClient).extractBom(anyString(), anyString(), eq("SIEMENS"));
+    }
+
+    @Test
+    @DisplayName("/bom/step: 404 NotFound -> fallback на старый /bom")
+    void extract_stepBom_notFound_fallbackToLegacy() {
+        RawItem oldItem = rawItem("i1", null, "Д-OLD", 1, "PART", false);
+        RawBom legacyBom = new RawBom("old-root", "СБ-OLD", "Legacy", List.of(oldItem));
+        when(integrationClient.fetchStepBom(anyString(), anyString()))
+                .thenThrow(new feign.FeignException.NotFound("step not found",
+                        feign.Request.create(feign.Request.HttpMethod.GET,
+                                "http://localhost:8092/api/v1/integration/bom/step",
+                                java.util.Map.of(), null, java.nio.charset.StandardCharsets.UTF_8, null),
+                        null, null));
+        when(integrationClient.detectCadSystem(anyString(), anyString())).thenReturn("SIEMENS");
+        when(integrationClient.extractBom(anyString(), anyString(), eq("SIEMENS"))).thenReturn(legacyBom);
+        when(integrationClient.extractConnections(anyString(), anyString(), eq("SIEMENS"))).thenReturn(List.of());
+
+        BomService.BomExtractionResult result = service.extract("proj1", "geo-1", "SIEMENS");
+
+        assertThat(result.getRootDesignation()).isEqualTo("СБ-OLD");
+        verify(integrationClient).extractBom(anyString(), anyString(), eq("SIEMENS"));
+    }
+
+    @Test
+    @DisplayName("/bom/step: RuntimeException -> fallback на старый /bom")
+    void extract_stepBom_runtimeException_fallbackToLegacy() {
+        RawItem oldItem = rawItem("i1", null, "Д-OLD", 1, "PART", false);
+        RawBom legacyBom = new RawBom("old-root", "СБ-OLD", "Legacy", List.of(oldItem));
+        when(integrationClient.fetchStepBom(anyString(), anyString()))
+                .thenThrow(new RuntimeException("integration down"));
+        when(integrationClient.detectCadSystem(anyString(), anyString())).thenReturn("SIEMENS");
+        when(integrationClient.extractBom(anyString(), anyString(), eq("SIEMENS"))).thenReturn(legacyBom);
+        when(integrationClient.extractConnections(anyString(), anyString(), eq("SIEMENS"))).thenReturn(List.of());
+
+        BomService.BomExtractionResult result = service.extract("proj1", "geo-1", "SIEMENS");
+
+        assertThat(result.getRootDesignation()).isEqualTo("СБ-OLD");
+        verify(integrationClient).extractBom(anyString(), anyString(), eq("SIEMENS"));
+    }
 }
