@@ -1,26 +1,31 @@
-## 🔄 HANDOFF (обновлено 2026-10-28, сессия 28 — integration multi-level STEP BOM)
+## 🔄 HANDOFF (обновлено 2026-10-29, сессия 30 — C.8 closed, E2E forging/machining, tooling live)
 
-- **HEAD:** `<после коммитов, заполнишь в конце>`
-- **Сессия 28 — сделано:**
-  - **`integration` — реальный STEP-парсер (2–3 уровня сборки):**
-    - `StepAssemblyParser` — структурный парсер AP203/AP214: `PRODUCT → PRODUCT_DEFINITION_FORMATION(_WITH_SPECIFIED_SOURCE) → PRODUCT_DEFINITION → NEXT_ASSEMBLY_USAGE_OCCURRENCE`. BREP игнорируется. Стриминг `BufferedReader` (1.3 MB / 3.5 MB файлы — не грузим целиком). BFS от корня, `depth > 10` → throw, cycle-guard через `visited`. `@Component`.
-    - `RawItemDto += level` (обратносовместимо, старый `/bom` его не ставит → null).
-    - `StepBomController` — `GET /api/v1/integration/bom/step?projectId=&objectRef=` → резолв `<cad.directory>/<ref>.STEP|.step|.stp` (регистронезависимо, fallback по stem), 404 `STEP_FILE_NOT_FOUND`, 400 `INVALID_STEP`, path-traversal guard (`..`, `/`, `\` → 400). Старый `/bom` (DB-only) **не тронут**.
-    - `application.yml += integration.cad.directory: ${CAD_DIR:C:/Users/Antipovich/Desktop/Orchestr/Info/3D}`.
-  - **Тесты `integration`: 20 → 34 (+14):**
-    - `StepAssemblyParserTest` (8): 2-level, 3-level, qty27, single-part, corrupted→throw, missing-file→throw, depth>10→throw, **реальный `94.3701110-01.STEP`** → `rootId=94.3701110-01`, 1 item `94.3701110-01-00`, qty=27, level=1.
-    - `StepBomControllerTest` (6): 200 single/two-level/qty27, 404, 400 corrupted, 400 path-traversal.
-  - **mvn verify integration:** BUILD SUCCESS, **34/34**.
-  - **E2E (integration:8092):** `/bom/step?objectRef=94.3701110-01` → 200, 1 item qty=27, level=1; `94.3701401-04` → 200, 0 items; `nonexistent` → 404 + JSON; path-traversal → 400.
-- **Тесты (сессия 28):** integration **34** (было 20), norming 72, assembly 67, gateway 13, auth 63, core 77, shared 90, orchestrator 103, casting 25, forging 34, machining 39, bom-service 85, equipment-service 126, recommendation 143, tooling-service 7. **Итого 978/0/0.**
+- **HEAD:** `b828977` + `docs: handoff сессии 30` (см. `git log -1`)
+- **Сессия 30 — сделано:**
+  - **C.8 закрыт (2 коммита):**
+    - `b50d1f4` casting: `sendResult` — конфигурируемый retry (`result-send-max-attempts`/backoff, `Math.max(1,...)`), `default-requeue-rejected:false`, exchange/routing-key из yml. Тесты 25 → 27.
+    - `2da7266` orchestrator: `moduleFor(PART_PROCESS_READY) → null`, `module` из `payload.module` (кладёт `ModuleResultConsumer`), `null` → `OrchestrationException`, `resolvedModule` для лямбды. Тесты 106 → 109.
+  - **E2E 6 модулей** (integration:8092, equipment:8094, tooling:8099, forging:8093, machining:8096, orchestrator:8080):
+    - **P1 FORGING** `geo-12345` → `MODULE_RESULT_OK{HOT_DIE_FORGING}`, `state=TOOLING_DESIGN`.
+    - **P2 MACHINING** `geo-test` → `MODULE_RESULT_OK{stages:5, operations:5, tool.type:[END_MILL×3, GRINDING_WHEEL]}`, `state=TOOLING_DESIGN`. **Сессия 25 закрыта вживую** (Feign machining→tooling, не fallback).
+    - `decision_log`: `PART_PROCESS_PLANNING{tp,module} → COMMAND_SENT{module} → MODULE_RESULT_OK`; при fail — `COMMAND_RETRY{module:forging}` (не casting).
+  - `PROJECT.md` §4/§6: gateway 8085, tooling 8099 (коммит `56304fd`).
+  - `.gitignore`: `e2e-pid-*.txt`, `e2e-run-*.log`, `e2e-package.log` (коммит `b828977`).
+- **Тесты:** orchestrator 109, casting 27, всего **986/0/0** (было 983).
 - **Не проверено / в работе:**
-  - `orchestrator` multi-level expansion (`BomExpandHandler`) — **следующая сессия**, требует правок state machine (103 теста, риск регрессии `TransitionHandlerTest`, грабля сессии 22).
-  - `bom-service` `IntegrationClient` не вызывает `/bom/step` (только старый `/bom`).
-  - 3-уровневая иерархия — только синтетика; реальный `94.3701110-01.STEP` = 2 уровня (`PRODUCT=2`, `NAUO=27`, все NAUO parent→child одинаковые).
-  - `94.3701211-04.STEP` — geometry-only (`PRODUCT=0`, `NAUO=0`), парсер корректно бросает `IllegalArgumentException` (нет PRODUCT) → 400.
-- **Следующий шаг:** orchestrator `BomExpandHandler` (BFS по `items`, `bom-service` per-node, `decision_log` `nodes_count`/`max_level`/`errors[]`; baseline 103/0/0, +6 тестов) → E2E полного маршрута.
-- **Открытые техдолги:** `C.2.2`, `C.5.1b`, `integration` 3-уровневый реальный CAD, `bom-service` wiring на `/bom/step`.
-- **Запущено сейчас:** integration:8092 остановлен после E2E. При старте следующей сессии — по PROJECT.md §6.
+  - Sequential `forging→machining` в одном проекте — **невозможен** без правки state machine (`PART_PROCESS_READY` generic → `TOOLING_DESIGN`, `plannedProcessTypes` валидируется как size=1).
+  - Scenario 2 (`BomExpandHandler` + `bom-service IntegrationClient → /bom/step`) — не начинали.
+  - `.bak`-мусор в репо (`*.java.bak`, `services/equipment-service/.bak-*`, дубликат `services/assembly-process-service/`) — отдельный `chore:` коммит.
+- **Следующий шаг:** Scenario 2 — `bom-service IntegrationClient → /bom/step`, затем `BomExpandHandler` BFS (baseline orchestrator 109, +6 тестов). Sequential forging+machining — отдельный техдолг.
+- **Запущено сейчас:** 6 java-модулей (integration/equipment/tooling/forging/machining/orchestrator) + docker (postgres/rabbitmq/redis/minio). После перезагрузки Windows — по §6 (tooling:8099 **до** machining).
+- **Грабли сессии 30 (топ-6):**
+  1. `$pid` read-only (№3, повтор) → `$projId`.
+  2. `Start-Process -RedirectStandardOutput` в PS 5.1 → пустой лог java. Надёжно: `cmd /c "java -jar ... > log 2>&1"`.
+  3. `run` асинхронный: `GET /state` сразу после `run` = старый state (race). Источник истины — `project_state` в БД или `history`.
+  4. `OrchestrationRequest` принимает `geometryId`, **не** `objectRef` (Jackson молча глотает unknown) → `objectRef=default-object` в forging.
+  5. `projectId` из тела `POST /projects` игнорируется — брать из ответа.
+  6. Лямбда в `ModuleCommandProducer` требует effectively final — `resolvedModule = module` после мутации.
+
 # Прогресс по проекту iktk-complex
 
 > Обновляйте в конце каждой сессии. Начинайте новый день с чтения — 2 минуты, и вы в контексте.
@@ -2671,3 +2676,34 @@ Integration читал только PostgreSQL (`GeometryRepository`), файл�
 - orchestrator `BomExpandHandler` (multi-level expansion, следующая сессия).
 - `bom-service` `IntegrationClient` → `/bom/step`.
 - `C.2.2`, `C.5.1b`.
+
+### Обновление 2026-10-29 (сессия 30 — C.8 closed, E2E forging/machining, tooling live, 986 тестов)
+
+**Цель:** C.8 + E2E forging/machining. **Достигнуто полностью.**
+
+**C.8 — два независимых фикса:**
+1. **casting** (`sendResult`): конфигурируемый retry (`result-send-max-attempts`, backoff, `Math.max(1,...)`), `default-requeue-rejected:false`, exchange/routing-key из yml. Тесты 25 → 27.
+2. **orchestrator** (`ModuleCommandProducer`): `moduleFor(PART_PROCESS_READY) → null`, `module` из `payload.module` (кладёт `ModuleResultConsumer`), `null` → `OrchestrationException` вместо тихого return. `resolvedModule` для лямбды. Тесты 106 → 109.
+
+**E2E (6 модулей):**
+- **P1 FORGING** `geo-12345` → `MODULE_RESULT_OK{HOT_DIE_FORGING}`, state `TOOLING_DESIGN`.
+- **P2 MACHINING** `geo-test` → `MODULE_RESULT_OK{stages:5, operations:5, tool.type:[END_MILL×3, GRINDING_WHEEL]}`, state `TOOLING_DESIGN`. **Сессия 25 закрыта вживую** — Feign machining→tooling, не fallback.
+- **C.8 вживую:** при `success=false` от forging `COMMAND_RETRY{module:forging}` (не casting).
+
+**Не сделано / техдолг:**
+- Sequential `forging→machining` в одном проекте **невозможен**: `PART_PROCESS_READY` generic → `TOOLING_DESIGN` один раз; `plannedProcessTypes` валидируется как `size=1`. Нужна правка state machine (варианты: `PART_PROCESS_READY_FORGING/MACHINING` или очередь `plannedProcessTypes`).
+- Scenario 2 (`BomExpandHandler` + `bom-service → /bom/step`) — не начинали, перенос в сессию 31.
+- `.bak`-мусор в репо (`*.java.bak`, `services/equipment-service/.bak-20261018-132142/`, дубликат `services/assembly-process-service/`) — отдельный `chore:` коммит.
+
+**Грабли сессии 30:**
+1. `$pid` read-only (№3, повтор) → `$projId`.
+2. `Start-Process -RedirectStandardOutput` в PS 5.1 → пустой лог java. Надёжно: `cmd /c "java -jar ... > log 2>&1"`.
+3. `run` асинхронный: `GET /state` сразу после `run` = старый state (race). Источник истины — `project_state` в БД или `history`.
+4. `OrchestrationRequest` принимает `geometryId`, **не** `objectRef` (Jackson молча глотает unknown) → `objectRef=default-object` в forging.
+5. `projectId` из тела `POST /projects` игнорируется — брать из ответа.
+6. Лямбда в `ModuleCommandProducer` требует effectively final — `resolvedModule = module` после мутации.
+
+**Тесты:** orchestrator **109** (было 106), casting **27** (было 25). Итого **986/0/0** (было 983).
+
+**Следующий шаг:** Scenario 2 — `bom-service IntegrationClient → /bom/step`, затем `BomExpandHandler` BFS в orchestrator (baseline 109, +6 тестов). Sequential forging+machining — отдельный техдолг с описанием в HANDOFF.
+
