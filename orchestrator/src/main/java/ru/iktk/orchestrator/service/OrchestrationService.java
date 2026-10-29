@@ -235,6 +235,8 @@ public class OrchestrationService {
 
         // SEQUENTIAL: PART_PROCESS_READY с pendingProcessTypes -> route next ТП, state machine остаётся в PART_PROCESS_PLANNING
         if (success && event == ProjectEvent.PART_PROCESS_READY && hasPendingTypes(runtime)) {
+            decisionLogService.log(projectId, "MODULE_RESULT_OK",
+                    Map.of("event", event.name(), "module", String.valueOf(runtime.getPayload().get("tpType")), "mode", "SEQUENTIAL"), currentActor());
             handleSequentialNext(projectId, runtime, payload);
             return;
         }

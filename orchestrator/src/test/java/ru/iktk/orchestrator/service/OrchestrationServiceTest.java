@@ -698,6 +698,23 @@ class OrchestrationServiceTest {
         }
 
         @Test
+        @DisplayName("onModuleResult sequential: MODULE_RESULT_OK для промежуточного ТП пишется в decision_log")
+        void onModuleResult_sequential_logsModuleResultOk() {
+            runtime.setState(ProjectState.PART_PROCESS_PLANNING);
+            Map<String, Object> p = new HashMap<>();
+            p.put("tpType", "FORGING");
+            p.put("pendingProcessTypes", new java.util.ArrayList<>(List.of("MACHINING")));
+            runtime.setPayload(p);
+            store.put(PROJECT_ID, runtime);
+
+            orchestrationService.onModuleResult(PROJECT_ID, ProjectEvent.PART_PROCESS_READY,
+                    new HashMap<>(), true);
+
+            verify(decisionLogService).log(eq(PROJECT_ID), eq("MODULE_RESULT_OK"), any(Map.class), any());
+            verify(decisionLogService).log(eq(PROJECT_ID), eq("SEQUENTIAL_NEXT"), any(Map.class), any());
+        }
+
+        @Test
         @DisplayName("onModuleResult PART_PROCESS_READY без pending -> legacy dispatchEvent")
         void onModuleResult_lastSequential_sendEvent() {
             runtime.setState(ProjectState.PART_PROCESS_PLANNING);
