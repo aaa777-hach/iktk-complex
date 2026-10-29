@@ -77,11 +77,14 @@ public class OrchestrationService {
 
                 // ===== TP =====
         boolean isAssembly = request.getObjectType() == ru.iktk.core.domain.Project.ObjectType.ASSEMBLY;
-        String tpType = resolveAndValidateTp(request.getPlannedProcessTypes(), isAssembly);
-        if (tpType != null) {
-            initialPayload.put("tpType", tpType);
+        java.util.List<String> tps = resolveAndValidateTps(request.getPlannedProcessTypes(), isAssembly);
+        if (tps != null && !tps.isEmpty()) {
+            initialPayload.put("tpType", tps.get(0));
             initialPayload.put("tpSource", "USER");
-            log.info("startProject: tpType={}, objectType={}", tpType, request.getObjectType());
+            if (tps.size() > 1) {
+                initialPayload.put("pendingProcessTypes", new java.util.ArrayList<>(tps.subList(1, tps.size())));
+            }
+            log.info("startProject: tpType={}, pending={}, objectType={}", tps.get(0), tps.size() - 1, request.getObjectType());
         }
 
         ProjectRuntime runtime = ProjectRuntime.builder()
@@ -229,6 +232,12 @@ public class OrchestrationService {
         log.info("onModuleResult: projectId={}, event={}, success={}", projectId, event, success);
 
         ProjectRuntime runtime = loadRuntime(projectId);
+
+        // SEQUENTIAL: PART_PROCESS_READY с pendingProcessTypes -> route next ТП, state machine остаётся в PART_PROCESS_PLANNING
+        if (success && event == ProjectEvent.PART_PROCESS_READY && hasPendingTypes(runtime)) {
+            handleSequentialNext(projectId, runtime, payload);
+            return;
+        }
         StateMachine<ProjectState, ProjectEvent> sm = obtainMachine(projectId, runtime.getState());
 
         if (success) {
@@ -240,6 +249,45 @@ public class OrchestrationService {
         decisionLogService.log(projectId, success ? "MODULE_RESULT_OK" : "MODULE_RESULT_FAIL",
                 Map.of("event", event.name(),
                         "payload", payload == null ? Map.of() : payload), currentActor());
+    }
+
+    /**
+     * Проверка: в payload есть отложенные ТП (sequential forging -> machining).
+     */
+    private boolean hasPendingTypes(ProjectRuntime runtime) {
+        if (runtime == null || runtime.getPayload() == null) return false;
+        Object p = runtime.getPayload().get("pendingProcessTypes");
+        return p instanceof java.util.List && !((java.util.List<?>) p).isEmpty();
+    }
+
+    /**
+     * SEQUENTIAL: следующий ТП из pendingProcessTypes -> tpType, route напрямую,
+     * state machine остаётся в PART_PROCESS_PLANNING (без sendEvent).
+     */
+    private void handleSequentialNext(String projectId, ProjectRuntime runtime, Map<String, String> payload) {
+        java.util.List<?> pending = (java.util.List<?>) runtime.getPayload().get("pendingProcessTypes");
+        String nextType = String.valueOf(pending.get(0));
+        java.util.List<Object> remaining = new java.util.ArrayList<>(pending.subList(1, pending.size()));
+
+        Map<String, Object> newPayload = new java.util.HashMap<>(runtime.getPayload());
+        newPayload.put("tpType", nextType);
+        newPayload.put("tpSource", "SEQUENTIAL");
+        if (remaining.isEmpty()) {
+            newPayload.remove("pendingProcessTypes");
+        } else {
+            newPayload.put("pendingProcessTypes", remaining);
+        }
+        if (payload != null) newPayload.putAll(payload);
+
+        runtime.setPayload(newPayload);
+        projectStateRepository.save(runtime);
+
+        StateMachine<ProjectState, ProjectEvent> sm = obtainMachine(projectId, runtime.getState());
+        transitionHandler.route(projectId, runtime.getState(), sm, newPayload);
+
+        decisionLogService.log(projectId, "SEQUENTIAL_NEXT",
+                Map.of("nextTp", nextType, "remaining", String.valueOf(remaining.size())), currentActor());
+        log.info("handleSequentialNext: projectId={}, nextTp={}, remaining={}", projectId, nextType, remaining.size());
     }
 
     private void handleModuleFailure(String projectId,
@@ -366,7 +414,10 @@ public class OrchestrationService {
                 .build();
     }
 
-        private String resolveAndValidateTp(java.util.List<String> plannedProcessTypes, boolean isAssembly) {
+    /**
+     * SEQUENTIAL: нормализованный список ТП (1..3). Для сборки — null.
+     */
+    private java.util.List<String> resolveAndValidateTps(java.util.List<String> plannedProcessTypes, boolean isAssembly) {
         if (isAssembly) {
             if (plannedProcessTypes != null && !plannedProcessTypes.isEmpty()) {
                 log.warn("startProject: objectType=ASSEMBLY, plannedProcessTypes={} ignored", plannedProcessTypes);
@@ -375,23 +426,26 @@ public class OrchestrationService {
         }
         if (plannedProcessTypes == null || plannedProcessTypes.isEmpty()) {
             throw new OrchestrationException(
-                    "\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u0422\u041f \u0438\u0437\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u0434\u0435\u0442\u0430\u043b\u0438: plannedProcessTypes \u043d\u0435 \u043f\u0435\u0440\u0435\u0434\u0430\u043d. \u0414\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435: CASTING, FORGING, MACHINING");
+                    "Укажите ТП изготовления детали: plannedProcessTypes не передан. Допустимые: CASTING, FORGING, MACHINING");
         }
-        if (plannedProcessTypes.size() > 1) {
+        if (plannedProcessTypes.size() > 3) {
             throw new OrchestrationException(
-                    "\u0414\u043b\u044f \u043e\u0434\u043d\u043e\u0439 \u0434\u0435\u0442\u0430\u043b\u0438 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044f \u043e\u0434\u0438\u043d \u0422\u041f; \u043f\u0435\u0440\u0435\u0434\u0430\u043d\u043e " + plannedProcessTypes.size());
+                    "Поддерживается не более 3 ТП на деталь; передано " + plannedProcessTypes.size());
         }
-        String tp = plannedProcessTypes.get(0);
-        if (tp == null || tp.isBlank()) {
-            throw new OrchestrationException(
-                    "plannedProcessTypes \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 \u043f\u0443\u0441\u0442\u043e\u0435 \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435; \u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435: CASTING, FORGING, MACHINING");
+        java.util.List<String> result = new java.util.ArrayList<>();
+        for (String tp : plannedProcessTypes) {
+            if (tp == null || tp.isBlank()) {
+                throw new OrchestrationException(
+                        "plannedProcessTypes содержит пустое значение; допустимые: CASTING, FORGING, MACHINING");
+            }
+            String normalized = tp.trim().toUpperCase(java.util.Locale.ROOT);
+            switch (normalized) {
+                case "CASTING", "FORGING", "MACHINING" -> result.add(normalized);
+                default -> throw new OrchestrationException(
+                        "Неизвестный ТП: " + tp + ". Допустимые: CASTING, FORGING, MACHINING");
+            }
         }
-        String normalized = tp.trim().toUpperCase(java.util.Locale.ROOT);
-        return switch (normalized) {
-            case "CASTING", "FORGING", "MACHINING" -> normalized;
-            default -> throw new OrchestrationException(
-                    "\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u0422\u041f: " + tp + ". \u0414\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0435: CASTING, FORGING, MACHINING");
-        };
+        return result;
     }
 
     private void validateRequest(OrchestrationRequest request) {

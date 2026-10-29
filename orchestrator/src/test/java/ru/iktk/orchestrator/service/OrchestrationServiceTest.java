@@ -645,4 +645,91 @@ class OrchestrationServiceTest {
                 .isInstanceOf(OrchestrationException.class)
                 .hasMessageContaining("plannedProcessTypes");
     }
+
+    @Nested
+    @DisplayName("Sequential forging -> machining (сессия 32)")
+    class SequentialTests {
+
+        @Test
+        @DisplayName("startProject 2 ТП -> tpType=FORGING, pendingProcessTypes=[MACHINING]")
+        void startProject_multiTp_pendingPopulated() {
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName("Seq")
+                    .requestedBy("ivanov")
+                    .plannedProcessTypes(List.of("FORGING", "MACHINING"))
+                    .build();
+
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class))).thenReturn(true);
+            orchestrationService.startProject(request);
+
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeast(1)).save(captor.capture());
+            ProjectRuntime saved = captor.getAllValues().stream()
+                    .filter(r -> r.getPayload() != null && r.getPayload().containsKey("pendingProcessTypes"))
+                    .findFirst().orElseThrow();
+            assertThat(saved.getPayload().get("tpType")).isEqualTo("FORGING");
+            List<?> pendingSaved = (List<?>) saved.getPayload().get("pendingProcessTypes");
+            assertThat(pendingSaved).hasSize(1);
+            assertThat(pendingSaved.get(0)).isEqualTo("MACHINING");
+        }
+
+        @Test
+        @DisplayName("onModuleResult PART_PROCESS_READY + pending -> route next, БЕЗ sendEvent")
+        void onModuleResult_sequential_routeToNext() {
+            runtime.setState(ProjectState.PART_PROCESS_PLANNING);
+            Map<String, Object> p = new HashMap<>();
+            p.put("tpType", "FORGING");
+            p.put("pendingProcessTypes", new java.util.ArrayList<>(List.of("MACHINING")));
+            runtime.setPayload(p);
+            store.put(PROJECT_ID, runtime);
+
+            orchestrationService.onModuleResult(PROJECT_ID, ProjectEvent.PART_PROCESS_READY,
+                    new HashMap<>(), true);
+
+            verify(transitionHandler).route(eq(PROJECT_ID), eq(ProjectState.PART_PROCESS_PLANNING),
+                    any(StateMachine.class), any(Map.class));
+            verify(stateMachine, never()).sendEvent(any(org.springframework.messaging.Message.class));
+            verify(decisionLogService).log(eq(PROJECT_ID), eq("SEQUENTIAL_NEXT"), any(Map.class), any());
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeast(1)).save(captor.capture());
+            ProjectRuntime saved = captor.getAllValues().get(captor.getAllValues().size() - 1);
+            assertThat(saved.getPayload().get("tpType")).isEqualTo("MACHINING");
+            assertThat(saved.getPayload().containsKey("pendingProcessTypes")).isFalse();
+        }
+
+        @Test
+        @DisplayName("onModuleResult PART_PROCESS_READY без pending -> legacy dispatchEvent")
+        void onModuleResult_lastSequential_sendEvent() {
+            runtime.setState(ProjectState.PART_PROCESS_PLANNING);
+            Map<String, Object> p = new HashMap<>();
+            p.put("tpType", "MACHINING");
+            runtime.setPayload(p);
+            store.put(PROJECT_ID, runtime);
+
+            State<ProjectState, ProjectEvent> tooling = mock(State.class);
+            when(tooling.getId()).thenReturn(ProjectState.TOOLING_DESIGN);
+            when(stateMachine.getState()).thenReturn(tooling);
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class))).thenReturn(true);
+
+            orchestrationService.onModuleResult(PROJECT_ID, ProjectEvent.PART_PROCESS_READY,
+                    new HashMap<>(), true);
+
+            verify(stateMachine).sendEvent(any(org.springframework.messaging.Message.class));
+            verify(decisionLogService, never()).log(eq(PROJECT_ID), eq("SEQUENTIAL_NEXT"), any(Map.class), any());
+        }
+
+        @Test
+        @DisplayName("startProject 4 ТП -> OrchestrationException (максимум 3)")
+        void startProject_4Tp_throws() {
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName("Too many")
+                    .requestedBy("ivanov")
+                    .plannedProcessTypes(List.of("CASTING", "FORGING", "MACHINING", "CASTING"))
+                    .build();
+
+            assertThatThrownBy(() -> orchestrationService.startProject(request))
+                    .isInstanceOf(OrchestrationException.class)
+                    .hasMessageContaining("не более 3");
+        }
+    }
 }
