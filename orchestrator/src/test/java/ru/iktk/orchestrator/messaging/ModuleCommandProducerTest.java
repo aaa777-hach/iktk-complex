@@ -223,4 +223,42 @@ class ModuleCommandProducerTest {
         assertThat(producer.getCommandsExchange()).isEqualTo("iktk.commands");
         assertThat(producer.getRoutingPrefix()).isEqualTo("iktk.command");
     }
+
+    @Test
+    @DisplayName("retry: PART_PROCESS_READY без module в payload -> OrchestrationException (C.8)")
+    void retry_partProcessReady_withoutModule_throws() {
+        assertThatThrownBy(() -> producer.retry("p1", ProjectEvent.PART_PROCESS_READY, Map.of()))
+                .isInstanceOf(OrchestrationException.class)
+                .hasMessageContaining("module")
+                .hasMessageContaining("PART_PROCESS_READY");
+        verifyNoInteractions(rabbitTemplate);
+    }
+
+    @Test
+    @DisplayName("retry: PART_PROCESS_READY с module=forging из payload -> iktk.command.forging")
+    void retry_partProcessReady_withModuleFromPayload_routesToForging() throws Exception {
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        producer.retry("p1", ProjectEvent.PART_PROCESS_READY, Map.of("module", "forging"));
+
+        verify(rabbitTemplate).convertAndSend(
+                eq("iktk.commands"), eq("iktk.command.forging"), eq("{}"),
+                any(MessagePostProcessor.class));
+        verify(decisionLogService).log(eq("p1"), eq("COMMAND_RETRY"),
+                org.mockito.ArgumentMatchers.argThat(m ->
+                        "forging".equals(m.get("module"))
+                                && "PART_PROCESS_READY".equals(m.get("event"))));
+    }
+
+    @Test
+    @DisplayName("retry: module из payload перекрывает moduleFor (machining, не casting/null)")
+    void retry_payloadModuleOverridesModuleFor() throws Exception {
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+
+        producer.retry("p1", ProjectEvent.PART_PROCESS_READY, Map.of("module", "machining"));
+
+        verify(rabbitTemplate).convertAndSend(
+                eq("iktk.commands"), eq("iktk.command.machining"), eq("{}"),
+                any(MessagePostProcessor.class));
+    }
 }

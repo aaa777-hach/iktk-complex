@@ -155,12 +155,17 @@ public class ModuleCommandProducer {
     public void retry(String projectId, ProjectEvent event, Map<String, ?> payload) {
         validate(projectId, event);
 
-        String module = moduleFor(event);
+        String module = extractModuleFromPayload(payload);
         if (module == null) {
-            log.warn("retry: для события {} не определён модуль, повтор невозможен", event);
-            return;
+            module = moduleFor(event);
+        }
+        if (module == null) {
+            log.error("retry: module не определён, event={}, projectId={}", event, projectId);
+            throw new OrchestrationException(
+                    "retry: module не определён для события " + event + " (projectId=" + projectId + ")");
         }
 
+        final String resolvedModule = module;
         int attempt = extractAttempt(payload) + 1;
         String routingKey = routingPrefix + "." + module;
         String correlationId = projectId + ":" + UUID.randomUUID();
@@ -176,7 +181,7 @@ public class ModuleCommandProducer {
                         props.setContentType(MessageProperties.CONTENT_TYPE_JSON);
                         props.setCorrelationId(correlationId);
                         props.setHeader("projectId", projectId);
-                        props.setHeader("module", module);
+                        props.setHeader("module", resolvedModule);
                         props.setHeader("event", event.name());
                         props.setHeader("attempt", attempt);
                         props.setHeader("sentAt", Instant.now().toString());
@@ -253,11 +258,23 @@ public class ModuleCommandProducer {
      * Соответствие события → модуль.
      * Используется при retry, когда нет явного состояния.
      */
+    private String extractModuleFromPayload(Map<String, ?> payload) {
+        if (payload == null) {
+            return null;
+        }
+        Object raw = payload.get("module");
+        if (raw == null) {
+            return null;
+        }
+        String s = raw.toString().trim();
+        return (s.isEmpty() || "null".equalsIgnoreCase(s)) ? null : s;
+    }
+
     private String moduleFor(ProjectEvent event) {
         return switch (event) {
             case START_GEOMETRY_INPUT, GEOMETRY_UPLOADED -> "geometry-analysis";
             case IS_PART                              -> "part-process-service";
-            case PART_PROCESS_READY                   -> "casting";
+            case PART_PROCESS_READY                   -> null; // C.8: module берётся из payload.module
             case IS_ASSEMBLY, BOM_EXTRACTED              -> "bom-service";
             case TOOLING_READY                           -> "tooling-service";
             case EQUIPMENT_MATCHED, EQUIPMENT_GAP        -> "equipment-service";
