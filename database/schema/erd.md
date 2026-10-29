@@ -5,26 +5,26 @@
 
 ### 3.1. `enterprises`
 
-| Поле | Тип | Ограничения | Назначение |
-|---|---|---|---|
-| `code` | VARCHAR(64) | PK | Код предприятия |
-| `name` | VARCHAR(255) | NOT NULL | Краткое наименование |
-| `full_name` | VARCHAR(512) | | Полное наименование |
-| `address` | VARCHAR(512) | | Адрес |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Создание |
+| Поле         | Тип         | Ограничения             | Назначение |
+|--------------|-------------|-------------------------|------------|
+| `code`       | VARCHAR(64) | PK                      | Код предприятия |
+| `name`       | VARCHAR(255)| NOT NULL                | Краткое наименование |
+| `full_name`  | VARCHAR(512)|                         | Полное наименование |
+| `address`    | VARCHAR(512)|                         | Адрес      |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Создание   |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Обновление |
 
 **Связи:** 1 → N с `departments`, 1 → N с `projects`, 1 → N с `users`.
 
 ### 3.2. `departments`
 
-| Поле | Тип | Ограничения | Назначение |
-|---|---|---|---|
-| `code` | VARCHAR(64) | PK | Код подразделения |
+| Поле              | Тип         | Ограничения      | Назначение  |
+|-------------------|-------------|------------------|-------------|
+| `code`            | VARCHAR(64) | PK                | Код подразделения |
 | `enterprise_code` | VARCHAR(64) | FK → enterprises | Предприятие |
-| `name` | VARCHAR(255) | NOT NULL | Наименование |
-| `created_at` | TIMESTAMPTZ | NOT NULL | Создание |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | Обновление |
+| `name`            | VARCHAR(255)| NOT NULL         | Наименование|
+| `created_at`      | TIMESTAMPTZ | NOT NULL         | Создание    |
+| `updated_at`      | TIMESTAMPTZ | NOT NULL         | Обновление  |
 
 ### 3.3. `materials`
 

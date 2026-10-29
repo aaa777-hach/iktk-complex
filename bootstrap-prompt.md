@@ -16,4 +16,12 @@ Windows + PowerShell 5.1, RabbitMQ (vhost /iktk), PostgreSQL.
 - Java-код и многострочный текст — только через `code` или `[System.IO.File]::WriteAllText`, не в PowerShell;
 - для git: `$ErrorActionPreference = "Continue"` + проверка `$LASTEXITCODE`.
 
-Цель сессии: [ВПИСАТЬ: например, "Auth.5 gateway + JWT-фильтр"]
+Цель сессии 31: 
+
+1. Scenario 2 — bom-service IntegrationClient → /bom/step (сессия 28, endpoint готов, wiring не сделан).
+
+2. BomExpandHandler BFS в orchestrator + 6 тестов (baseline 109).
+
+chore: уборка .bak-мусора (*.java.bak, services/equipment-service/.bak-20261018-132142/, дубликат services/assembly-process-service/).
+
+3. Sequential forging→machining — отдельный техдолг (правка state machine), не блокер.
