@@ -38,7 +38,7 @@ iktk-complex/
 ## 4. Порты (DEV)
 | Сервис | Порт | БД |
 |---|---|---|
-| gateway | **проверить** (был 8080, конфликт с orchestrator) | — |
+| gateway | 8085 | — |
 | orchestrator | 8080 | iktk_orchestrator |
 | auth | 8081 | iktk_auth |
 | casting | 8090 | iktk_casting |
@@ -50,7 +50,7 @@ iktk-complex/
 | machining | 8096 | iktk_machining |
 | assembly-process-service | 8097 | iktk_assembly |
 | recommendation-service | 8098 | iktk_recommendation |
-| tooling | не реализован | — |
+| tooling-service | 8099 | — |
 
 ## 5. Креды (DEV — не для прода)
 | Что | Значение |
@@ -65,7 +65,7 @@ iktk-complex/
 ## 6. Порядок запуска (после перезагрузки Windows)
 1. `docker start iktk-postgres iktk-rabbitmq iktk-redis iktk-minio`
 2. Дождаться `iktk-postgres` → `healthy` (иначе `Connection refused: localhost:5432`)
-3. Модули (каждый в своём окне): `integration:8092` → `equipment:8094` → `bom:8091` → `casting:8090` → `forging:8093` → `machining:8096` → `assembly:8097` → `recommendation:8098` → `norming:8095`
+3. Модули (каждый в своём окне): `integration:8092` → `equipment:8094` → `bom:8091` → `casting:8090` → `forging:8093` → `machining:8096` → `assembly:8097` → `recommendation:8098` → `tooling:8099` → `norming:8095`
 4. `auth:8081` → `orchestrator:8080` → `gateway:?`
 5. Smoke: `Invoke-RestMethod http://localhost:8081/actuator/health`
 
