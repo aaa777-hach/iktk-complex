@@ -2732,4 +2732,36 @@ Integration читал только PostgreSQL (`GeometryRepository`), файл�
 4. `BomCommandConsumer` backward-compatible конструктор (3-арг + 4-арг с `@Autowired`) — существующие 7 тестов не ломаются при добавлении `BomExpandHandler`.
 5. `-Dspring-boot.repackage.skip=true` в PS 5.1 разбивается на два аргумента (точка + `=`) → `Unknown lifecycle phase ".repackage.skip=true"`. Гасить JVM (грабля №4) или кавычить через `& mvn ...`.
 
+### Обновление 2026-10-29 (сессия 32 — sequential forging→machining, 113/0/0)
+
+**Цель:** sequential forging→machining (state machine, техдолг сессии 30–31). **Достигнуто.**
+
+**Реализация (без правки state machine):**
+- `OrchestrationService.startProject`: `resolveAndValidateTps` (1..3 ТП), первый → `payload.tpType`, остальные → `payload.pendingProcessTypes` (JSONB, миграция не нужна).
+- `OrchestrationService.onModuleResult`: branch `if (success && event == PART_PROCESS_READY && hasPendingTypes(runtime))` → `handleSequentialNext` (берёт следующий ТП, кладёт в `tpType`, `transitionHandler.route(PART_PROCESS_PLANNING)` **без** `sm.sendEvent`, state machine остаётся в `PART_PROCESS_PLANNING`). Иначе — legacy `dispatchEvent`.
+- `decision_log SEQUENTIAL_NEXT {nextTp, remaining}`.
+- Удалён dead `resolveAndValidateTp` (singular, ~27 строк, не вызывался после патча).
+
+**Ключевое отличие от сессии 22:** `TransitionHandler`, `StateMachineConfig`, `ProjectRuntime`-схема **не тронуты**. Branch только в `OrchestrationService` под guard `hasPendingTypes` → существующие 109 тестов legacy-путь.
+
+**E2E (6 модулей):** integration:8092, equipment:8094, forging:8093, machining:8096, tooling:8099, orchestrator:8080.
+- `POST /projects` `{plannedProcessTypes:[FORGING,MACHINING], geometryId:geo-12345}` + `run`.
+- `decision_log`: `PART_PROCESS_PLANNING{FORGING,USER}` → `COMMAND_SENT{forging}` → `PART_PROCESS_PLANNING{MACHINING,SEQUENTIAL}` → `COMMAND_SENT{machining}` → `SEQUENTIAL_NEXT{remaining:0}` → `MODULE_RESULT_OK{machining,processId:1ef72f37...}`.
+- `state` = `TOOLING_DESIGN`. Записи в БД: forging `571f7a4b`, machining `1ef72f37`. **Оба модуля отработали.**
+
+**Тесты:** orchestrator 109 → **113** (+4: `startProject_multiTp_pendingPopulated`, `onModuleResult_sequential_routeToNext`, `onModuleResult_lastSequential_sendEvent`, `startProject_4Tp_throws`). Всего **997/0/0** (было 993).
+
+**Не сделано / техдолг:**
+- **`MODULE_RESULT_OK` для промежуточного ТП не пишется в `decision_log`:** `SEQUENTIAL`-branch делает `return` до `decisionLogService.log(MODULE_RESULT_OK)`. Фикс: 1 строка `decisionLogService.log(projectId, "MODULE_RESULT_OK", ...)` перед `handleSequentialNext(...)`. Функционально не мешает (processId в модульной БД есть).
+- Per-node BFS-маршрутизация по листьям BOM (поверх `BomExpandHandler` из сессии 31) — техдолг.
+- `C.2.2`, `C.5.1b`.
+
+**Грабли сессии 32:**
+1. `Set-Location` **не меняет** .NET cwd — `[System.IO.File]::ReadAllText("relative/path")` ищет в `C:\WINDOWS\system32`. Использовать `Join-Path $root ...` для всех .NET File IO.
+2. `sendEvent(any())` ambiguous: `sendEvent(E)` vs `sendEvent(Mono<Message<E>>)`. Типизировать: `sendEvent(any(org.springframework.messaging.Message.class))`.
+3. `assertThat((List<?>) x).containsExactly("...")` не компилируется (capture#1 of ? vs String). Фикс: `hasSize(1)` + `get(0)` с `isEqualTo`.
+4. `startProject` тест без `when(stateMachine.sendEvent(...)).thenReturn(true)` падает на `dispatchEvent(START_GEOMETRY_INPUT)` — mock возвращает `false` → `OrchestrationException`.
+5. `mvn verify` при запущенной JVM на порту модуля — `repackage` не может переименовать `*.jar` (грабля №4, повтор). Гасить `Stop-Process` перед verify.
+
+
 
