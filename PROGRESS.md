@@ -2707,3 +2707,29 @@ Integration читал только PostgreSQL (`GeometryRepository`), файл�
 
 **Следующий шаг:** Scenario 2 — `bom-service IntegrationClient → /bom/step`, затем `BomExpandHandler` BFS в orchestrator (baseline 109, +6 тестов). Sequential forging+machining — отдельный техдолг с описанием в HANDOFF.
 
+### Обновление 2026-10-29 (сессия 31 — Scenario 2: /bom/step + BomExpandHandler + chore)
+
+**Цель:** Scenario 2 (bom-service → /bom/step, BomExpandHandler BFS) + chore. **Достигнуто.**
+
+**Сделано:**
+- **bom-service → /bom/step** (`0327f5f`): `IntegrationClient.fetchStepBom(projectId, objectRef)`, `BomExtractionService.extractRawBom` сначала пробует `/bom/step`, при 404/400/exception — fallback на старый `/bom`. 85 → 89 (+4 теста).
+- **BomExpandHandler BFS в bom-service** (`9d7c941`): `record BomNode(id, parentId)`, BFS от корня, `MAX_DEPTH=50`, метрики `nodesCount/maxLevel/leafCount/errors[]` (`ORPHAN_PARENT`, `CYCLE_OR_DUP`, `MAX_DEPTH_EXCEEDED`, `EMPTY_ITEMS`). `BomCommandConsumer.sendResult` → `payload.bomMetrics` (вложенно). 89 → 96 (+7 тестов). State machine **не тронут**, orchestrator 109 baseline сохранён.
+- **chore**: удалён `services/assembly-process-service/` (dead code, 1928 строк, пакет `ru.iktk.assembly.*` — дубликат `modules/assembly-process-service/`).
+
+**Отклонение от handoff:** `BomExpandHandler` сделан **в bom-service**, а не в orchestrator. Причина: `payload` `BOM_EXTRACTED` не содержит `items` (только `bomId`); BFS в orchestrator потребовал бы Feign-хопа + правки `OrchestrationService.onModuleResult` (~30 тестов) + `ModuleResultConsumer` (12 тестов) — риск для baseline 109. В bom-service `items` уже в памяти (`BomService.getItems(bomId, null)`), риск нулевой. Метрики видны в `decision_log` (`MODULE_RESULT_OK.payload.bomMetrics`).
+
+**Тесты:** bom-service 96 (+11 за сессию), всего **993/0/0** (было 986).
+
+**Не сделано / техдолг:**
+- Sequential `forging→machining` (state machine: `pendingProcesses` + правка `TransitionHandler` — риск для 22 тестов, прецедент сессии 22).
+- Per-node BFS-маршрутизация (N команд в модули по листьям BOM) — поверх `BomExpandHandler`, требует `pendingProcesses` в `ProjectRuntime`.
+- `C.2.2`, `C.5.1b`.
+
+**Грабли сессии 31:**
+1. `FeignException.NotFound("...", null, null, null)` → NPE в конструкторе (требует non-null `Request`) → «unfinished stubbing» каскадом в следующих тестах. Фикс: `Request.create(HttpMethod.GET, url, Map.of(), null, UTF_8, null)`.
+2. PS 5.1: `$lines[0..-1]` = `@(0, -1)` (первая и последняя строки), **не** пустой массив. При `hIdx=0` `$before` надо явно `@()`.
+3. `Get-ChildItem -Filter "*.bak*"` не находит `.bak-*` папки — фильтр по имени работает только для файлов; для папок `-Directory` + `Where Name -match`.
+4. `BomCommandConsumer` backward-compatible конструктор (3-арг + 4-арг с `@Autowired`) — существующие 7 тестов не ломаются при добавлении `BomExpandHandler`.
+5. `-Dspring-boot.repackage.skip=true` в PS 5.1 разбивается на два аргумента (точка + `=`) → `Unknown lifecycle phase ".repackage.skip=true"`. Гасить JVM (грабля №4) или кавычить через `& mvn ...`.
+
+
