@@ -7,9 +7,11 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.iktk.modules.integration.model.Geometry;
 import ru.iktk.modules.integration.repository.GeometryRepository;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Сервис геометрии.
@@ -17,6 +19,9 @@ import java.util.Optional;
  * <p>Возвращает геометрию из БД {@code iktk_geometry} по {@code objectRef}.
  * Контракт JSON совпадает с {@code CastingProcessService.GeometryData}
  * (11 полей), чтобы {@code casting} мог десериализовать через Feign.
+ *
+ * <p>Сессия 33: {@link #upsertFromStep} сохраняет эвристическую оценку
+ * из {@link GeometryEstimateService} в БД.
  */
 @Service
 public class GeometryService {
@@ -31,11 +36,6 @@ public class GeometryService {
 
     /**
      * Построить геометрию для {@code objectRef}.
-     *
-     * @param projectId идентификатор проекта (для контекста; в БД — опционально)
-     * @param objectRef идентификатор объекта (ключ поиска в БД)
-     * @return Map с 11 полями {@code GeometryData}, либо {@code null},
-     *         если {@code objectRef} не найден (контроллер вернёт 404)
      */
     @Transactional(readOnly = true)
     public Map<String, Object> buildGeometry(String projectId, String objectRef) {
@@ -65,5 +65,70 @@ public class GeometryService {
         log.info("GeometryService: found geometry objectRef={}, volume={}, complexity={}",
                 ref, g.getVolume(), g.getComplexityScore());
         return m;
+    }
+
+    /**
+     * Сохранить/обновить геометрию из эвристической оценки (сессия 33).
+     *
+     * @param objectRef уникальный ключ (имя STEP-файла без расширения)
+     * @param projectId опциональный проект
+     * @param estimate  эвристики из {@link GeometryEstimateService}
+     * @param overwrite {@code true} — обновить существующую, {@code false} — {@link AlreadyExistsException}
+     * @return сохранённая сущность
+     */
+    @Transactional
+    public Geometry upsertFromStep(String objectRef, String projectId,
+                                   GeometryEstimateService.EstimateResult estimate,
+                                   boolean overwrite) {
+        Optional<Geometry> existing = repository.findByObjectRef(objectRef);
+        if (existing.isPresent() && !overwrite) {
+            log.warn("upsertFromStep: objectRef={} already exists, overwrite=false", objectRef);
+            throw new AlreadyExistsException(objectRef);
+        }
+
+        Geometry g;
+        if (existing.isPresent()) {
+            g = existing.get();
+            g.setProjectId(projectId);
+            g.setMaterial(estimate.getMaterial());
+            g.setVolume(estimate.getVolume());
+            g.setMass(estimate.getMass());
+            g.setMinWallThickness(estimate.getMinWallThickness());
+            g.setMinFilletRadius(estimate.getMinFilletRadius());
+            g.setMinDraftAngle(estimate.getMinDraftAngle());
+            g.setNominalDimensions(estimate.getNominalDimensions());
+            g.setComplexityScore(estimate.getComplexityScore());
+            g.setUndercuts(estimate.isUndercuts());
+            g.setHotSpots(estimate.isHotSpots());
+            log.info("upsertFromStep: update objectRef={}", objectRef);
+        } else {
+            g = Geometry.builder()
+                    .id(UUID.randomUUID().toString())
+                    .objectRef(objectRef)
+                    .projectId(projectId)
+                    .material(estimate.getMaterial())
+                    .volume(estimate.getVolume())
+                    .mass(estimate.getMass())
+                    .minWallThickness(estimate.getMinWallThickness())
+                    .minFilletRadius(estimate.getMinFilletRadius())
+                    .minDraftAngle(estimate.getMinDraftAngle())
+                    .nominalDimensions(estimate.getNominalDimensions())
+                    .complexityScore(estimate.getComplexityScore())
+                    .undercuts(estimate.isUndercuts())
+                    .hotSpots(estimate.isHotSpots())
+                    .build();
+            log.info("upsertFromStep: insert objectRef={}", objectRef);
+        }
+
+        Geometry saved = repository.save(g);
+        log.info("upsertFromStep: saved objectRef={}, id={}", saved.getObjectRef(), saved.getId());
+        return saved;
+    }
+
+    /** objectRef уже существует, overwrite=false. */
+    public static class AlreadyExistsException extends RuntimeException {
+        public AlreadyExistsException(String objectRef) {
+            super("Geometry already exists: " + objectRef);
+        }
     }
 }

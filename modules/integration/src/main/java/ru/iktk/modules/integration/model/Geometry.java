@@ -3,6 +3,8 @@ package ru.iktk.modules.integration.model;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
@@ -66,6 +68,7 @@ public class Geometry {
 
     protected Geometry() {}
 
+    public String getId() { return id; }
     public String getObjectRef() { return objectRef; }
     public String getProjectId() { return projectId; }
     public String getMaterial() { return material; }
@@ -78,4 +81,53 @@ public class Geometry {
     public int getComplexityScore() { return complexityScore; }
     public boolean isUndercuts() { return undercuts; }
     public boolean isHotSpots() { return hotSpots; }
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
+
+    // сеттеры нужны для upsertFromStep (сессия 33)
+    public void setProjectId(String projectId) { this.projectId = projectId; }
+    public void setMaterial(String material) { this.material = material; }
+    public void setVolume(BigDecimal volume) { this.volume = volume; }
+    public void setMass(BigDecimal mass) { this.mass = mass; }
+    public void setMinWallThickness(BigDecimal v) { this.minWallThickness = v; }
+    public void setMinFilletRadius(BigDecimal v) { this.minFilletRadius = v; }
+    public void setMinDraftAngle(BigDecimal v) { this.minDraftAngle = v; }
+    public void setNominalDimensions(BigDecimal v) { this.nominalDimensions = v; }
+    public void setComplexityScore(int complexityScore) { this.complexityScore = complexityScore; }
+    public void setUndercuts(boolean undercuts) { this.undercuts = undercuts; }
+    public void setHotSpots(boolean hotSpots) { this.hotSpots = hotSpots; }
+
+    public static Builder builder() { return new Builder(); }
+
+    public static class Builder {
+        private final Geometry g = new Geometry();
+
+        public Builder id(String v) { g.id = v; return this; }
+        public Builder objectRef(String v) { g.objectRef = v; return this; }
+        public Builder projectId(String v) { g.projectId = v; return this; }
+        public Builder material(String v) { g.material = v; return this; }
+        public Builder volume(BigDecimal v) { g.volume = v; return this; }
+        public Builder mass(BigDecimal v) { g.mass = v; return this; }
+        public Builder minWallThickness(BigDecimal v) { g.minWallThickness = v; return this; }
+        public Builder minFilletRadius(BigDecimal v) { g.minFilletRadius = v; return this; }
+        public Builder minDraftAngle(BigDecimal v) { g.minDraftAngle = v; return this; }
+        public Builder nominalDimensions(BigDecimal v) { g.nominalDimensions = v; return this; }
+        public Builder complexityScore(int v) { g.complexityScore = v; return this; }
+        public Builder undercuts(boolean v) { g.undercuts = v; return this; }
+        public Builder hotSpots(boolean v) { g.hotSpots = v; return this; }
+
+        public Geometry build() { return g; }
+    }
+
+    @PrePersist
+    void onCreate() {
+        Instant now = Instant.now();
+        if (createdAt == null) createdAt = now;
+        if (updatedAt == null) updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }
