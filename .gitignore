@@ -48,3 +48,8 @@ step*.ps1
 *.bak
 *.orig
 _archive-*/
+# session e2e scratch (s30)
+e2e-pid-*.txt
+e2e-run-*.log
+e2e-run-*.err.log
+e2e-package.log
