@@ -8,14 +8,17 @@ import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.AmqpHeaders;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 import ru.iktk.bom.dto.BomAnalyzeRequest;
+import ru.iktk.bom.dto.BomItemDto;
 import ru.iktk.bom.dto.BomResponse;
-import ru.iktk.bom.exception.BomException;
+import ru.iktk.bom.service.BomExpandHandler;
 import ru.iktk.bom.service.BomService;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,6 +31,9 @@ import java.util.Map;
  *   <li>Публикует результат в {@code iktk.results} с ключом
  *       {@code iktk.result.bom-service} и событием {@code BOM_EXTRACTED}.</li>
  * </ol>
+ *
+ * <p>Сессия 31: в payload результата кладётся {@code bomMetrics}
+ * (BFS-метрики многоуровневого BOM: nodesCount/maxLevel/leafCount/errors[]).
  */
 @Component
 public class BomCommandConsumer {
@@ -42,13 +48,25 @@ public class BomCommandConsumer {
     private final BomService bomService;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
+    private final BomExpandHandler bomExpandHandler;
 
+    /** Backward-compatible конструктор для юнит-тестов (сессия 31). */
     public BomCommandConsumer(BomService bomService,
                               RabbitTemplate rabbitTemplate,
                               ObjectMapper objectMapper) {
+        this(bomService, rabbitTemplate, objectMapper, new BomExpandHandler());
+    }
+
+    /** Основной конструктор (Spring). */
+    @Autowired
+    public BomCommandConsumer(BomService bomService,
+                              RabbitTemplate rabbitTemplate,
+                              ObjectMapper objectMapper,
+                              BomExpandHandler bomExpandHandler) {
         this.bomService = bomService;
         this.rabbitTemplate = rabbitTemplate;
         this.objectMapper = objectMapper;
+        this.bomExpandHandler = bomExpandHandler;
     }
 
     @RabbitListener(queues = "${iktk.messaging.commands-queue:iktk.bom-service.queue}")
@@ -114,6 +132,13 @@ public class BomCommandConsumer {
                 if (response.getConnectionsCount() != null) {
                     payload.put("connectionsCount", String.valueOf(response.getConnectionsCount()));
                 }
+                // Сессия 31: BFS-метрики многоуровневого BOM (диагностика, state machine не трогаем)
+                if (response.getBomId() != null) {
+                    Map<String, Object> metrics = computeBomMetrics(response.getBomId());
+                    if (metrics != null) {
+                        payload.put("bomMetrics", metrics);
+                    }
+                }
             } else {
                 payload.put("error", errorMessage == null ? "unknown" : errorMessage);
             }
@@ -137,6 +162,26 @@ public class BomCommandConsumer {
             log.info("BomCommandConsumer: result sent, projectId={}, success={}", projectId, success);
         } catch (Exception e) {
             log.error("BomCommandConsumer: result send error, projectId={}", projectId, e);
+        }
+    }
+
+    /**
+     * BFS-метрики BOM для {@code payload.bomMetrics}. Ошибка/пустой список -> null
+     * (не ломаем основной результат).
+     */
+    private Map<String, Object> computeBomMetrics(String bomId) {
+        try {
+            List<BomItemDto> items = bomService.getItems(bomId, null);
+            if (items == null || items.isEmpty()) {
+                return null;
+            }
+            List<BomExpandHandler.BomNode> nodes = items.stream()
+                    .map(i -> new BomExpandHandler.BomNode(i.getId(), i.getParentId()))
+                    .toList();
+            return bomExpandHandler.expand(nodes, bomId).toPayload();
+        } catch (Exception e) {
+            log.warn("BomCommandConsumer: bomMetrics skip for bomId={}: {}", bomId, e.getMessage());
+            return null;
         }
     }
 }
