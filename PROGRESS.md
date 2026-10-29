@@ -2763,5 +2763,48 @@ Integration читал только PostgreSQL (`GeometryRepository`), файл�
 4. `startProject` тест без `when(stateMachine.sendEvent(...)).thenReturn(true)` падает на `dispatchEvent(START_GEOMETRY_INPUT)` — mock возвращает `false` → `OrchestrationException`.
 5. `mvn verify` при запущенной JVM на порту модуля — `repackage` не может переименовать `*.jar` (грабля №4, повтор). Гасить `Stop-Process` перед verify.
 
+### Обновление 2026-10-29 (сессия 33 — путь А: STEP → эвристики → маршрут, 1007/0/0)
+
+**Цель:** путь А — подать 3D STEP, получить маршрут. **Достигнуто.**
+
+**Сделано:**
+- **`POST /api/v1/geometry/from-step`** (integration): `GeometryEstimateService` — эвристики из STEP (material по regex, volume/mass/complexity/nominalDimensions по числу items, толщины/уклоны — дефолты по материалу). Все эвристики в `warnings[]` — технолог видит, где врёт.
+- `Geometry` += Builder + `@PrePersist/@PreUpdate`; `GeometryService.upsertFromStep` (save/update, 409 при `!overwrite`); `GeometryController.POST /from-step` (свой `resolve`, `stripExtension`).
+- **`MODULE_RESULT_OK` для промежуточного ТП** в `OrchestrationService.handleSequentialNext` (техдолг сессии 32, 1 строка).
+
+**E2E на 3 реальных STEP** (integration:8092, equipment:8094, forging:8093, machining:8096, tooling:8099, orchestrator:8080):
+| STEP | items | mass | warnings | state |
+|---|---|---|---|---|
+| `94.3701110-01` | 1 | 0.0098 | material fallback, volume/mass estimated | `TOOLING_DESIGN` |
+| `94.3701401-04` | 0 | 0.0079 | то же | `TOOLING_DESIGN` |
+| `94.3701211-04` | 0 | 0.0079 | то же | `TOOLING_DESIGN` |
+
+Все 3: `POST /from-step → POST /projects → run` → `COMMAND_SENT → ROUTED → PROJECT_STARTED → PART_PROCESS_PLANNING → COMMAND_SENT → ROUTED → ORCHESTRATION_RUN → MODULE_RESULT_OK` → `TOOLING_DESIGN`.
+
+**Тесты:** integration 34 → **43** (+9: `GeometryEstimateServiceTest` 6, `GeometryControllerTest` 4→7), orchestrator 113 → **114**. Всего **1007/0/0** (было 997).
+
+**Что врёт (честно):**
+- material не детектится для всех 3 STEP — в PRODUCT names только номера обозначений, без «Сталь». `warnings` говорит «material not detected: fallback Steel 45».
+- volume/mass — по числу items (1000 + 250×items), не по BREP.
+- толщины/уклоны — дефолты по материалу (Steel: 4/2/1).
+- undercuts/hotSpots — всегда false (нужен BREP).
+
+**Изменение поведения:** `94.3701211-04` (geometry-only, PRODUCT=0) теперь даёт 200 + items=0, а не 400 (как в handoff сессии 28). `StepAssemblyParser` возвращает пустой `RawBomDto` вместо `IllegalArgumentException` — грациознее, фиксирую.
+
+**Следующий шаг (сессия 34):** по отчёту технолога — заменить критичные эвристики на реальный парсинг. Приоритет: material (по PRODUCT names / MATERIAL_DESIGNATION), volume/mass (bounding box или OpenCascade).
+
+**Не сделано / техдолг:**
+- BREP-парсер (OpenCascade / pythonocc) — материал/объём/толщины/теплоузлы. Следующий шаг по отчёту.
+- Per-node BFS-маршрутизация по листьям BOM (поверх `BomExpandHandler` из сессии 31).
+- `C.2.2`, `C.5.1b`.
+
+**Грабли сессии 33:**
+1. Java `Pattern` `\b` **не работает** с кириллицей (даже с `(?u)`). Убирать `\b`, оставлять специфичные альтернативы.
+2. Java `(?i)` = ASCII case-insensitive, `(?iu)` = Unicode case-insensitive. Для кириллицы обязателен `u` (но `u` не помогает `\b`).
+3. `Geometry` `protected Geometry()` (JPA) — без Builder не создать из теста. Добавлен Builder.
+4. `GeometryControllerTest` при добавлении зависимостей в контроллер — `@MockBean` ×3 + `@TestPropertySource` для `cad.directory`. `@BeforeAll/@AfterAll` для временного STEP-файла.
+5. `stripExtension` в контроллере: ключ в БД — без расширения (`94.3701110-01`), а `objectRef` в запросе — с `.STEP`. Без нормализации моки не совпадают.
+
+
 
 
