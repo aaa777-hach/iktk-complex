@@ -10,6 +10,7 @@ spring:
     listener:
       simple:
         missing-queues-fatal: false
+        default-requeue-rejected: false
   datasource:
     url: ${CASTING_DB_URL:jdbc:postgresql://localhost:5432/iktk_casting}
     username: ${CASTING_DB_USER:iktk_app}
@@ -40,7 +41,11 @@ iktk:
   equipment:
     url: ${EQUIPMENT_URL:http://localhost:8094}
   casting:
-    demo-fallback: true
+    demo-fallback: ${CASTING_DEMO_FALLBACK:true}
+    result-exchange: ${CASTING_RESULT_EXCHANGE:iktk.results}
+    result-routing-key: ${CASTING_RESULT_ROUTING_KEY:iktk.result.casting}
+    result-send-max-attempts: ${CASTING_RESULT_SEND_MAX_ATTEMPTS:3}
+    result-send-backoff-ms: ${CASTING_RESULT_SEND_BACKOFF_MS:500}
 
 server:
   port: 8090

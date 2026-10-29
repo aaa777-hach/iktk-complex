@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 import ru.iktk.core.exception.OrchestrationException;
 import ru.iktk.modules.casting.dto.CastingRequest;
 import ru.iktk.modules.casting.dto.CastingResponse;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+
 /**
  * Тесты CastingCommandConsumer (@RabbitListener).
  *
@@ -40,10 +42,15 @@ class CastingCommandConsumerTest {
     private CastingCommandConsumer consumer;
     private ObjectMapper objectMapper;
 
-    @BeforeEach
+     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
         consumer = new CastingCommandConsumer(castingProcessService, rabbitTemplate, objectMapper);
+        ReflectionTestUtils.setField(consumer, "resultExchange", "iktk.results");
+        ReflectionTestUtils.setField(consumer, "resultRoutingKey", "iktk.result.casting");
+        ReflectionTestUtils.setField(consumer, "resultSendMaxAttempts", 3);
+        ReflectionTestUtils.setField(consumer, "resultSendBackoffMs", 0L);  // без sleep в тестах
+        ReflectionTestUtils.setField(consumer, "demoFallback", true);
     }
 
     private CastingResponse response() {
@@ -108,5 +115,34 @@ class CastingCommandConsumerTest {
         verify(castingProcessService).designProcess(captor.capture());
         assertThat(captor.getValue().getObjectRef()).isEqualTo("geo-42");
         assertThat(captor.getValue().getProjectId()).isEqualTo("p1");
+    }
+        @Test
+    void onCommand_sendFailsOnce_retrySucceeds() {
+        String body = "{\"projectId\":\"p1\",\"payload\":{\"objectRef\":\"geo-1\"}}";
+        when(castingProcessService.designProcess(any(CastingRequest.class))).thenReturn(response());
+        org.mockito.Mockito.doThrow(new RuntimeException("amqp down"))
+                .doNothing()
+                .when(rabbitTemplate).convertAndSend(eq("iktk.results"), eq("iktk.result.casting"),
+                        anyString(), any(MessagePostProcessor.class));
+
+        consumer.onCommand(body, "iktk.command.casting", "corr-1");
+
+        verify(rabbitTemplate, org.mockito.Mockito.times(2))
+                .convertAndSend(eq("iktk.results"), eq("iktk.result.casting"),
+                        anyString(), any(MessagePostProcessor.class));
+    }
+
+    @Test
+    void onCommand_sendFailsAllAttempts_throwsOrchestrationException() {
+        String body = "{\"projectId\":\"p1\",\"payload\":{\"objectRef\":\"geo-1\"}}";
+        when(castingProcessService.designProcess(any(CastingRequest.class))).thenReturn(response());
+        org.mockito.Mockito.doThrow(new RuntimeException("amqp down"))
+                .when(rabbitTemplate).convertAndSend(eq("iktk.results"), eq("iktk.result.casting"),
+                        anyString(), any(MessagePostProcessor.class));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> consumer.onCommand(body, "iktk.command.casting", "corr-1"))
+                .isInstanceOf(OrchestrationException.class)
+                .hasMessageContaining("3");
     }
 }

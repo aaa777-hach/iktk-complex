@@ -11,6 +11,7 @@ import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
+import ru.iktk.core.exception.OrchestrationException;
 import ru.iktk.modules.casting.dto.CastingRequest;
 import ru.iktk.modules.casting.dto.CastingResponse;
 import ru.iktk.modules.casting.service.CastingProcessService;
@@ -31,6 +32,18 @@ public class CastingCommandConsumer {
     @Value("${iktk.casting.demo-fallback:false}")
     private boolean demoFallback;
 
+    @Value("${iktk.casting.result-exchange:iktk.results}")
+    private String resultExchange;
+
+    @Value("${iktk.casting.result-routing-key:iktk.result.casting}")
+    private String resultRoutingKey;
+
+    @Value("${iktk.casting.result-send-max-attempts:3}")
+    private int resultSendMaxAttempts;
+
+    @Value("${iktk.casting.result-send-backoff-ms:500}")
+    private long resultSendBackoffMs;
+
     public CastingCommandConsumer(CastingProcessService castingProcessService,
                                   RabbitTemplate rabbitTemplate,
                                   ObjectMapper objectMapper) {
@@ -41,12 +54,17 @@ public class CastingCommandConsumer {
 
     @RabbitListener(queues = "${iktk.messaging.commands-queue:iktk.casting.queue}")
     public void onCommand(String bodyJson,
-                          @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey,
+                          @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String incomingRoutingKey,
                           @Header(value = AmqpHeaders.CORRELATION_ID, required = false) String correlationId) {
 
-        log.info("CastingCommandConsumer: command received, routingKey={}, correlationId={}", routingKey, correlationId);
+        log.info("CastingCommandConsumer: command received, routingKey={}, correlationId={}",
+                incomingRoutingKey, correlationId);
 
         String projectId = null;
+        CastingResponse response = null;
+        boolean success = true;
+        String errorMessage = null;
+
         try {
             Map<String, Object> body = objectMapper.readValue(bodyJson, new TypeReference<>() {});
             projectId = (String) body.get("projectId");
@@ -63,16 +81,19 @@ public class CastingCommandConsumer {
             request.setProjectId(projectId);
             request.setObjectRef(objectRef);
 
-            CastingResponse response = designWithFallback(request, objectRef);
+            response = designWithFallback(request, objectRef);
 
             log.info("CastingCommandConsumer: process designed, processId={}, method={}",
                     response.getProcessId(), response.getMethod());
-            sendResult(projectId, response, correlationId, true, null);
-
         } catch (Exception e) {
             log.error("CastingCommandConsumer: processing error, projectId={}", projectId, e);
-            sendResult(projectId, null, correlationId, false, e.getMessage());
+            success = false;
+            errorMessage = e.getMessage();
         }
+
+        // sendResult бросает OrchestrationException при исчерпании попыток →
+        // listener не ACK'ает → default-requeue-rejected=false → discard/DLQ.
+        sendResult(projectId, response, correlationId, success, errorMessage);
     }
 
     private CastingResponse designWithFallback(CastingRequest request, String objectRef) {
@@ -101,39 +122,67 @@ public class CastingCommandConsumer {
             log.error("CastingCommandConsumer: projectId missing, cannot send result");
             return;
         }
-        try {
-            Map<String, Object> resultBody = new HashMap<>();
-            resultBody.put("projectId", projectId);
-            resultBody.put("event", "PART_PROCESS_READY");
-            resultBody.put("success", success);
 
-            Map<String, Object> payload = new HashMap<>();
-            if (success && response != null) {
-                payload.put("processId", response.getProcessId());
-                payload.put("method", response.getMethod() == null ? null : response.getMethod().name());
-            } else {
-                payload.put("error", errorMessage == null ? "unknown" : errorMessage);
-            }
-            resultBody.put("payload", payload);
+        Map<String, Object> resultBody = new HashMap<>();
+        resultBody.put("projectId", projectId);
+        resultBody.put("event", "PART_PROCESS_READY");
+        resultBody.put("success", success);
 
-            rabbitTemplate.convertAndSend(
-                    "iktk.results",
-                    "iktk.result.casting",
-                    objectMapper.writeValueAsString(resultBody),
-                    message -> {
-                        MessageProperties props = message.getMessageProperties();
-                        props.setContentType(MessageProperties.CONTENT_TYPE_JSON);
-                        if (correlationId != null) props.setCorrelationId(correlationId);
-                        props.setHeader("projectId", projectId);
-                        props.setHeader("module", "casting");
-                        props.setHeader("event", "PART_PROCESS_READY");
-                        props.setHeader("success", success);
-                        return message;
-                    }
-            );
-            log.info("CastingCommandConsumer: result sent, projectId={}, success={}", projectId, success);
-        } catch (Exception e) {
-            log.error("CastingCommandConsumer: result send error, projectId={}", projectId, e);
+        Map<String, Object> payload = new HashMap<>();
+        if (success && response != null) {
+            payload.put("processId", response.getProcessId());
+            payload.put("method", response.getMethod() == null ? null : response.getMethod().name());
+        } else {
+            payload.put("error", errorMessage == null ? "unknown" : errorMessage);
         }
+        resultBody.put("payload", payload);
+
+        final String bodyJson;
+        try {
+            bodyJson = objectMapper.writeValueAsString(resultBody);
+        } catch (Exception e) {
+            throw new OrchestrationException("Не удалось сериализовать PART_PROCESS_READY: " + e.getMessage());
+        }
+
+        final boolean finalSuccess = success;
+        final int maxAttempts = Math.max(1, resultSendMaxAttempts);
+        final long backoffMs = Math.max(0L, resultSendBackoffMs);
+        Exception lastFailure = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                rabbitTemplate.convertAndSend(resultExchange, resultRoutingKey, bodyJson, message -> {
+                    MessageProperties props = message.getMessageProperties();
+                    props.setContentType(MessageProperties.CONTENT_TYPE_JSON);
+                    if (correlationId != null) props.setCorrelationId(correlationId);
+                    props.setHeader("projectId", projectId);
+                    props.setHeader("module", "casting");
+                    props.setHeader("event", "PART_PROCESS_READY");
+                    props.setHeader("success", finalSuccess);
+                    return message;
+                });
+                log.info("CastingCommandConsumer: result sent, projectId={}, success={}, attempt={}/{}",
+                        projectId, success, attempt, maxAttempts);
+                return;
+            } catch (Exception e) {
+                lastFailure = e;
+                log.warn("CastingCommandConsumer: result send attempt {}/{} failed: {}",
+                        attempt, maxAttempts, e.getMessage());
+                if (attempt < maxAttempts) {
+                    try {
+                        Thread.sleep(backoffMs * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }
+
+        log.error("CastingCommandConsumer: result send FAILED after {} attempts, projectId={}",
+                maxAttempts, projectId);
+        throw new OrchestrationException(
+                "Не удалось отправить PART_PROCESS_READY после " + resultSendMaxAttempts +
+                " попыток: " + (lastFailure == null ? "unknown" : lastFailure.getMessage()));
     }
 }
