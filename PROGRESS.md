@@ -1,37 +1,37 @@
-## 🔄 HANDOFF (обновлено 2026-10-29, сессия 30 — C.8 closed, E2E forging/machining, tooling live)
+## 🔄 HANDOFF (обновлено 2026-10-30, сессия 34 — задача №1 закрыта: STEP → БД → machining, заглушка ТП)
 
-- **HEAD:** `b828977` + `docs: handoff сессии 30` (см. `git log -1`)
-- **Сессия 30 — сделано:**
-  - **C.8 закрыт (2 коммита):**
-    - `b50d1f4` casting: `sendResult` — конфигурируемый retry (`result-send-max-attempts`/backoff, `Math.max(1,...)`), `default-requeue-rejected:false`, exchange/routing-key из yml. Тесты 25 → 27.
-    - `2da7266` orchestrator: `moduleFor(PART_PROCESS_READY) → null`, `module` из `payload.module` (кладёт `ModuleResultConsumer`), `null` → `OrchestrationException`, `resolvedModule` для лямбды. Тесты 106 → 109.
-  - **E2E 6 модулей** (integration:8092, equipment:8094, tooling:8099, forging:8093, machining:8096, orchestrator:8080):
-    - **P1 FORGING** `geo-12345` → `MODULE_RESULT_OK{HOT_DIE_FORGING}`, `state=TOOLING_DESIGN`.
-    - **P2 MACHINING** `geo-test` → `MODULE_RESULT_OK{stages:5, operations:5, tool.type:[END_MILL×3, GRINDING_WHEEL]}`, `state=TOOLING_DESIGN`. **Сессия 25 закрыта вживую** (Feign machining→tooling, не fallback).
-    - `decision_log`: `PART_PROCESS_PLANNING{tp,module} → COMMAND_SENT{module} → MODULE_RESULT_OK`; при fail — `COMMAND_RETRY{module:forging}` (не casting).
-  - `PROJECT.md` §4/§6: gateway 8085, tooling 8099 (коммит `56304fd`).
-  - `.gitignore`: `e2e-pid-*.txt`, `e2e-run-*.log`, `e2e-package.log` (коммит `b828977`).
-- **Тесты:** orchestrator 109, casting 27, всего **986/0/0** (было 983).
-- **Не проверено / в работе:**
-  - Sequential `forging→machining` в одном проекте — **невозможен** без правки state machine (`PART_PROCESS_READY` generic → `TOOLING_DESIGN`, `plannedProcessTypes` валидируется как size=1).
-  - Scenario 2 (`BomExpandHandler` + `bom-service IntegrationClient → /bom/step`) — не начинали.
-  - `.bak`-мусор в репо (`*.java.bak`, `services/equipment-service/.bak-*`, дубликат `services/assembly-process-service/`) — отдельный `chore:` коммит.
-- **Следующий шаг:** Scenario 2 — `bom-service IntegrationClient → /bom/step`, затем `BomExpandHandler` BFS (baseline orchestrator 109, +6 тестов). Sequential forging+machining — отдельный техдолг.
-- **Запущено сейчас:** 6 java-модулей (integration/equipment/tooling/forging/machining/orchestrator) + docker (postgres/rabbitmq/redis/minio). После перезагрузки Windows — по §6 (tooling:8099 **до** machining).
-- **Грабли сессии 30 (топ-6):**
-  1. `$pid` read-only (№3, повтор) → `$projId`.
-  2. `Start-Process -RedirectStandardOutput` в PS 5.1 → пустой лог java. Надёжно: `cmd /c "java -jar ... > log 2>&1"`.
-  3. `run` асинхронный: `GET /state` сразу после `run` = старый state (race). Источник истины — `project_state` в БД или `history`.
-  4. `OrchestrationRequest` принимает `geometryId`, **не** `objectRef` (Jackson молча глотает unknown) → `objectRef=default-object` в forging.
-  5. `projectId` из тела `POST /projects` игнорируется — брать из ответа.
-  6. Лямбда в `ModuleCommandProducer` требует effectively final — `resolvedModule = module` после мутации.
-
-# Прогресс по проекту iktk-complex
-
-> Обновляйте в конце каждой сессии. Начинайте новый день с чтения — 2 минуты, и вы в контексте.
-
+- **HEAD:** `8afb191` + `docs: handoff сессии 34` (см. `git log -1`)
+- **Сессия 34 — сделано (задача №1: сквозной сценарий STEP → БД → machining):**
+  - **core:**
+    - `OrchestrationRequest` +6 полей: `stubProcessType`, `material`, `volume`, `mass`, `complexity`, `warnings`.
+    - `OrchestrationResponse` +4 поля: `awaitingDecision`, `failedEvent`, `attempts`, `model` (Map).
+    - Тесты DTO: `OrchestrationRequestTest` (9), `OrchestrationResponseTest` (8). `core` 53 → **70/0/0**, Jacoco LINE ≥ 0.90 / BRANCH ≥ 0.85 пройден.
+  - **orchestrator:**
+    - `OrchestratorProperties`: +`stubEnabled`, `stubProcessType`; `retryMaxAttempts`/`retryBackoffMs` теперь применяются.
+    - `OrchestrationService`: stub-ветка в `startProject` (MACHINING→1, CASTING→2, FORGING→3), `plannedProcessTypes` опционален; O-18 (убран дублирующий `route()`), O-21 (`resetAttempt` при успехе), O-28 (`awaitingDecision` в payload/response), O-46 (`MAX_RETRIES` из properties), `getModel(projectId)`.
+    - `TransitionHandler`: O-19 — `PART_PROCESS_PLANNING` без `tpType` → `throw` (не fallback в casting).
+    - Тесты: `TransitionHandlerTest` 22 → 24; `OrchestrationServiceTest` **разделён** на `OrchestrationServiceCoreTest` (~23) + `OrchestrationServiceFlowTest` (13). `orchestrator` 116 → **123/0/0**.
+  - **Тесты итого:** 1007 → **1023/0/0** (orchestrator 123, core 70).
+- **Не сделано / техдолг:**
+  - **O-34 (важно):** sequential из RabbitMQ **не работает** — `ModuleResultConsumer.flattenPayload` приводит `pendingProcessTypes` (List) к строке, `hasPendingTypes` проверяет `instanceof List` → false. E2E s32 работал только при прямом вызове `onModuleResult` (в тестах), не через RabbitMQ.
+  - **Задача №3 (следующий шаг):** заменить заглушку ТП на реальный анализ STEP (эвристики `integration` уже дают `material/volume/mass/complexity/warnings` — Orchestrator берёт их из `OrchestrationRequest`, но **не анализирует сам**).
+  - **O-33/O-29:** `BOM_EXTRACTED → PART_PROCESS_PLANNING` без `tpType` (per-node BFS по листьям BOM) — для сборки/изделия.
+  - **O-35:** DLQ не эскалирует (`onDeadLetter` только пишет в журнал, `moveToAwaitingDecision` не вызывается).
+  - **O-44:** DLQ не привязан как `deadLetterExchange` к results-queue → nack теряется.
+  - **O-45:** exchange `iktk.commands` не объявлен бином.
+  - **O-26:** авторизация отсутствует (`permitAll`, нет `@EnableMethodSecurity`).
+  - **O-42/O-43:** нет `GET /projects`, `cancel`, `metrics`, пагинации `history`.
+  - `retryBackoffMs` не применяется (нужна правка `ModuleCommandProducer`).
+- **Следующий шаг:** **O-34** (sequential из RabbitMQ) или **задача №3** (реальный анализ STEP). В новом чате приложить `handoff` + перечень O-01…O-48.
+- **Грабли сессии 34:**
+  1. Скрипты PowerShell с here-string `@" … "@` **интерполируют** `$` и `()` → ошибка парсинга. Для Java-кода — **`@' … '@`** или `[System.IO.File]::WriteAllText`.
+  2. **`LastIndexOf("}")`** в скрипте вставки — **ненадёжен** (может попасть на `}` метода). Нужен **баланс скобок**.
+  3. **Regex-удаление старого теста** «съело» весь `@Nested StartProjectTests` + 9 `@Nested` — потеря ~26 тестов. **Не удалять тесты regex'ом**; переписывать файл целиком.
+  4. `git rm` старого + `git add` нового с похожим именем → `git` распознаёт как `R` (rename) — нормально, в коммите `R`.
+  5. `mvn verify` на `core` падает на `jacoco:check` при **новых DTO-полях без тестов**. Решение: тесты DTO (9 + 8) — закрывают LINE/BRANCH.
+  6. `git push` пишет в stderr → PowerShell с `$ErrorActionPreference="Stop"` даёт `NativeCommandError`, но `$LASTEXITCODE=0`. Для git — `Continue`.
+- **Запущено сейчас:** не проверял (сессия закончилась коммитом). Docker: `postgres/rabbitmq/redis/minio`. Java-модули — по §6.
 ---
-
 ## 🎯 ТЕКУЩИЙ СТАТУС (2026-10-15, конец сессии)
 
 ### ✅ РАБОТАЕТ ПОЛНЫЙ ЖИЗНЕННЫЙ ЦИКЛ ПРОЕКТА
