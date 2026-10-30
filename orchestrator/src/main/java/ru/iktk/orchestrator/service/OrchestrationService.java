@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.iktk.core.dto.OrchestrationRequest;
 import ru.iktk.core.dto.OrchestrationResponse;
 import ru.iktk.core.exception.OrchestrationException;
+import ru.iktk.orchestrator.config.OrchestratorProperties;
 import ru.iktk.orchestrator.messaging.ModuleCommandProducer;
 import ru.iktk.orchestrator.model.ProjectRuntime;
 import ru.iktk.orchestrator.repository.ProjectStateRepository;
@@ -20,9 +21,12 @@ import ru.iktk.orchestrator.statemachine.ProjectState;
 import ru.iktk.orchestrator.statemachine.TransitionHandler;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Map;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,13 +35,19 @@ public class OrchestrationService {
 
     private static final Logger log = LoggerFactory.getLogger(OrchestrationService.class);
 
-    private static final int MAX_RETRIES = 3;
+    /** Коды заглушки ТП: MACHINING → 1, CASTING → 2, FORGING → 3. */
+    private static final Map<String, Integer> STUB_CODES = Map.of(
+            "MACHINING", 1,
+            "CASTING",   2,
+            "FORGING",   3
+    );
 
     private final StateMachineFactory<ProjectState, ProjectEvent> stateMachineFactory;
     private final ProjectStateRepository projectStateRepository;
     private final ModuleCommandProducer moduleCommandProducer;
     private final TransitionHandler transitionHandler;
     private final DecisionLogService decisionLogService;
+    private final OrchestratorProperties properties;
 
     private final Map<String, StateMachine<ProjectState, ProjectEvent>> machines =
             new ConcurrentHashMap<>();
@@ -46,12 +56,14 @@ public class OrchestrationService {
                                 ProjectStateRepository projectStateRepository,
                                 ModuleCommandProducer moduleCommandProducer,
                                 TransitionHandler transitionHandler,
-                                DecisionLogService decisionLogService) {
+                                DecisionLogService decisionLogService,
+                                OrchestratorProperties properties) {
         this.stateMachineFactory = stateMachineFactory;
         this.projectStateRepository = projectStateRepository;
         this.moduleCommandProducer = moduleCommandProducer;
         this.transitionHandler = transitionHandler;
         this.decisionLogService = decisionLogService;
+        this.properties = properties;
     }
 
     @Transactional
@@ -62,8 +74,6 @@ public class OrchestrationService {
         log.info("startProject: projectId={}, name={}", projectId, request.getProjectName());
 
         // Начальный payload: objectRef, objectType (ASSEMBLY/PART), assemblyId
-        // objectType нужен dispatchEvent для выбора IS_ASSEMBLY vs IS_PART
-        // на GEOMETRY_ANALYSIS.
         Map<String, Object> initialPayload = new HashMap<>();
         if (request.getGeometryId() != null && !request.getGeometryId().isBlank()) {
             initialPayload.put("objectRef", request.getGeometryId());
@@ -75,16 +85,37 @@ public class OrchestrationService {
             initialPayload.put("assemblyId", request.getAssemblyId());
         }
 
-                // ===== TP =====
+        // Поля модели из ответа integration (POST /geometry/from-step)
+        if (request.getMaterial() != null) {
+            initialPayload.put("material", request.getMaterial());
+        }
+        if (request.getVolume() != null) {
+            initialPayload.put("volume", request.getVolume());
+        }
+        if (request.getMass() != null) {
+            initialPayload.put("mass", request.getMass());
+        }
+        if (request.getComplexity() != null) {
+            initialPayload.put("complexity", request.getComplexity());
+        }
+        if (request.getWarnings() != null && !request.getWarnings().isEmpty()) {
+            initialPayload.put("warnings", new ArrayList<>(request.getWarnings()));
+        }
+
+        // ===== TP =====
         boolean isAssembly = request.getObjectType() == ru.iktk.core.domain.Project.ObjectType.ASSEMBLY;
-        java.util.List<String> tps = resolveAndValidateTps(request.getPlannedProcessTypes(), isAssembly);
+        List<String> tps = resolveAndValidateTps(request.getPlannedProcessTypes(), isAssembly);
         if (tps != null && !tps.isEmpty()) {
+            // legacy-путь: явный plannedProcessTypes
             initialPayload.put("tpType", tps.get(0));
             initialPayload.put("tpSource", "USER");
             if (tps.size() > 1) {
-                initialPayload.put("pendingProcessTypes", new java.util.ArrayList<>(tps.subList(1, tps.size())));
+                initialPayload.put("pendingProcessTypes", new ArrayList<>(tps.subList(1, tps.size())));
             }
             log.info("startProject: tpType={}, pending={}, objectType={}", tps.get(0), tps.size() - 1, request.getObjectType());
+        } else if (!isAssembly) {
+            // stub-путь: plannedProcessTypes не задан → заглушка
+            applyStubProcessType(request, initialPayload);
         }
 
         ProjectRuntime runtime = ProjectRuntime.builder()
@@ -133,6 +164,31 @@ public class OrchestrationService {
         ProjectRuntime runtime = loadRuntime(projectId);
         StateMachine<ProjectState, ProjectEvent> sm = obtainMachine(projectId, runtime.getState());
         return buildResponse(runtime, sm);
+    }
+
+    /**
+     * Информация о модели проекта (задача 2: что записано в БД по модели).
+     * Возвращает подмножество payload, относящееся к модели.
+     */
+    public Map<String, Object> getModel(String projectId) {
+        ProjectRuntime runtime = loadRuntime(projectId);
+        Map<String, Object> model = new LinkedHashMap<>();
+        Map<String, Object> payload = runtime.getPayload();
+        if (payload != null) {
+            copyIfPresent(payload, model, "objectRef");
+            copyIfPresent(payload, model, "objectType");
+            copyIfPresent(payload, model, "assemblyId");
+            copyIfPresent(payload, model, "material");
+            copyIfPresent(payload, model, "volume");
+            copyIfPresent(payload, model, "mass");
+            copyIfPresent(payload, model, "complexity");
+            copyIfPresent(payload, model, "warnings");
+            copyIfPresent(payload, model, "tpType");
+            copyIfPresent(payload, model, "tpSource");
+            copyIfPresent(payload, model, "stubCode");
+            copyIfPresent(payload, model, "pendingProcessTypes");
+        }
+        return model;
     }
 
     @Transactional
@@ -243,6 +299,8 @@ public class OrchestrationService {
         StateMachine<ProjectState, ProjectEvent> sm = obtainMachine(projectId, runtime.getState());
 
         if (success) {
+            // O-21: успешный результат сбрасывает счётчик retry
+            transitionHandler.resetAttempt(projectId, event);
             dispatchEvent(projectId, sm, event, payload);
         } else {
             handleModuleFailure(projectId, sm, event, payload);
@@ -259,7 +317,7 @@ public class OrchestrationService {
     private boolean hasPendingTypes(ProjectRuntime runtime) {
         if (runtime == null || runtime.getPayload() == null) return false;
         Object p = runtime.getPayload().get("pendingProcessTypes");
-        return p instanceof java.util.List && !((java.util.List<?>) p).isEmpty();
+        return p instanceof List && !((List<?>) p).isEmpty();
     }
 
     /**
@@ -267,11 +325,11 @@ public class OrchestrationService {
      * state machine остаётся в PART_PROCESS_PLANNING (без sendEvent).
      */
     private void handleSequentialNext(String projectId, ProjectRuntime runtime, Map<String, String> payload) {
-        java.util.List<?> pending = (java.util.List<?>) runtime.getPayload().get("pendingProcessTypes");
+        List<?> pending = (List<?>) runtime.getPayload().get("pendingProcessTypes");
         String nextType = String.valueOf(pending.get(0));
-        java.util.List<Object> remaining = new java.util.ArrayList<>(pending.subList(1, pending.size()));
+        List<Object> remaining = new ArrayList<>(pending.subList(1, pending.size()));
 
-        Map<String, Object> newPayload = new java.util.HashMap<>(runtime.getPayload());
+        Map<String, Object> newPayload = new HashMap<>(runtime.getPayload());
         newPayload.put("tpType", nextType);
         newPayload.put("tpSource", "SEQUENTIAL");
         if (remaining.isEmpty()) {
@@ -297,19 +355,37 @@ public class OrchestrationService {
                                      ProjectEvent event,
                                      Map<String, String> payload) {
         int attempt = transitionHandler.incrementAttempt(projectId, event);
+        int maxAttempts = resolveMaxRetries();
 
-        if (attempt < MAX_RETRIES) {
-            log.warn("Повторная попытка {} для события {} (projectId={})",
-                    attempt, event, projectId);
+        if (attempt < maxAttempts) {
+            log.warn("Повторная попытка {} из {} для события {} (projectId={})",
+                    attempt, maxAttempts, event, projectId);
             moduleCommandProducer.retry(projectId, event, payload);
             return;
         }
 
         log.error("Модуль исчерпал попытки: projectId={}, event={}", projectId, event);
+
+        // O-28: фиксируем «ожидает решения» в payload (runtime.state не меняем — SM остаётся)
+        markAwaitingDecision(projectId, event, attempt);
+
         decisionLogService.log(projectId, "MODULE_FAILED",
                 Map.of("event", event.name(), "attempts", String.valueOf(attempt)), currentActor());
 
         transitionHandler.moveToAwaitingDecision(sm, projectId, event);
+    }
+
+    private void markAwaitingDecision(String projectId, ProjectEvent event, int attempt) {
+        ProjectRuntime rt = loadRuntime(projectId);
+        Map<String, Object> merged = new HashMap<>();
+        if (rt.getPayload() != null) {
+            merged.putAll(rt.getPayload());
+        }
+        merged.put("awaitingDecision", true);
+        merged.put("failedEvent", event.name());
+        merged.put("attempts", attempt);
+        rt.setPayload(merged);
+        projectStateRepository.save(rt);
     }
 
     private void dispatchEvent(String projectId, StateMachine<ProjectState, ProjectEvent> sm,
@@ -344,14 +420,12 @@ public class OrchestrationService {
 
         persistState(projectId, sm, newState);
 
-
+        // O-18: убран дублирующий вызов route() — оставлен только рекурсивный
+        // dispatchEvent для автоматических состояний.
         if (transitionHandler.isAutoState(newState)) {
-            transitionHandler.route(projectId, newState, sm, loadRuntime(projectId).getPayload());
-        }        if (transitionHandler.isAutoState(newState)) {
             ProjectEvent autoEvent = transitionHandler.nextAuto(newState);
 
             // Спецслучай: GEOMETRY_ANALYSIS + objectType=ASSEMBLY -> IS_ASSEMBLY
-            // (nextAuto по умолчанию возвращает IS_PART — "по умолчанию деталь").
             if (newState == ProjectState.GEOMETRY_ANALYSIS
                     && autoEvent == ProjectEvent.IS_PART) {
                 ProjectRuntime rt = loadRuntime(projectId);
@@ -403,6 +477,11 @@ public class OrchestrationService {
     private OrchestrationResponse buildResponse(ProjectRuntime runtime,
                                                 StateMachine<ProjectState, ProjectEvent> sm) {
         ProjectState state = sm.getState().getId();
+        Map<String, Object> payload = runtime.getPayload();
+        Boolean awaitingDecision = payload != null && Boolean.TRUE.equals(payload.get("awaitingDecision"));
+        String failedEvent = payload == null ? null : str(payload.get("failedEvent"));
+        Integer attempts = payload == null ? null : intOrNull(payload.get("attempts"));
+
         return OrchestrationResponse.builder()
                 .projectId(runtime.getProjectId())
                 .projectName(runtime.getProjectName())
@@ -410,16 +489,94 @@ public class OrchestrationService {
                 .stateDisplayName(state.getDisplayName())
                 .stateCategory(state.getCategory().name())
                 .pointOfControl(state.isPointOfControl())
-                .awaitingUserAction(state.isPointOfControl())
+                .awaitingUserAction(state.isPointOfControl() || Boolean.TRUE.equals(awaitingDecision))
                 .availableEvents(transitionHandler.availableEvents(state))
+                .awaitingDecision(awaitingDecision)
+                .failedEvent(failedEvent)
+                .attempts(attempts)
+                .model(extractModel(payload))
                 .updatedAt(runtime.getUpdatedAt())
                 .build();
     }
 
+    private Map<String, Object> extractModel(Map<String, Object> payload) {
+        if (payload == null) return null;
+        Map<String, Object> model = new LinkedHashMap<>();
+        copyIfPresent(payload, model, "objectRef");
+        copyIfPresent(payload, model, "objectType");
+        copyIfPresent(payload, model, "material");
+        copyIfPresent(payload, model, "volume");
+        copyIfPresent(payload, model, "mass");
+        copyIfPresent(payload, model, "complexity");
+        copyIfPresent(payload, model, "warnings");
+        copyIfPresent(payload, model, "tpType");
+        copyIfPresent(payload, model, "tpSource");
+        copyIfPresent(payload, model, "stubCode");
+        return model.isEmpty() ? null : model;
+    }
+
+    private void copyIfPresent(Map<String, Object> src, Map<String, Object> dst, String key) {
+        if (src.containsKey(key)) {
+            dst.put(key, src.get(key));
+        }
+    }
+
+    private String str(Object o) {
+        return o == null ? null : o.toString();
+    }
+
+    private Integer intOrNull(Object o) {
+        if (o instanceof Number n) return n.intValue();
+        if (o instanceof String s && !s.isBlank()) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Заглушка выбора ТП (на первом этапе).
+     * Берёт {@code request.stubProcessType} или {@code properties.stubProcessType},
+     * нормализует, кладёт tpType/tpSource=STUB/stubCode в payload.
+     */
+    private void applyStubProcessType(OrchestrationRequest request, Map<String, Object> initialPayload) {
+        if (!properties.isStubEnabled()) {
+            throw new OrchestrationException(
+                    "Укажите ТП изготовления детали: plannedProcessTypes не передан "
+                            + "(заглушка выбора ТП отключена: iktk.orchestrator.stub-enabled=false)");
+        }
+        String raw = request.hasStubProcessType()
+                ? request.getStubProcessType()
+                : properties.getStubProcessType();
+        if (raw == null || raw.isBlank()) {
+            throw new OrchestrationException(
+                    "Заглушка ТП: не задан stubProcessType (ни в запросе, ни в конфиге)");
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        Integer code = STUB_CODES.get(normalized);
+        if (code == null) {
+            throw new OrchestrationException(
+                    "Заглушка ТП: неизвестный ТП " + raw + ". Допустимые: MACHINING (1), CASTING (2), FORGING (3)");
+        }
+        initialPayload.put("tpType", normalized);
+        initialPayload.put("tpSource", "STUB");
+        initialPayload.put("stubCode", code);
+        log.info("startProject: stub ТП -> tpType={}, stubCode={}", normalized, code);
+    }
+
+    private int resolveMaxRetries() {
+        int v = properties.getRetryMaxAttempts();
+        return v > 0 ? v : 3;
+    }
+
     /**
      * SEQUENTIAL: нормализованный список ТП (1..3). Для сборки — null.
+     * Если plannedProcessTypes пуст — возвращает null (дальше решает stub/throw).
      */
-    private java.util.List<String> resolveAndValidateTps(java.util.List<String> plannedProcessTypes, boolean isAssembly) {
+    private List<String> resolveAndValidateTps(List<String> plannedProcessTypes, boolean isAssembly) {
         if (isAssembly) {
             if (plannedProcessTypes != null && !plannedProcessTypes.isEmpty()) {
                 log.warn("startProject: objectType=ASSEMBLY, plannedProcessTypes={} ignored", plannedProcessTypes);
@@ -427,20 +584,20 @@ public class OrchestrationService {
             return null;
         }
         if (plannedProcessTypes == null || plannedProcessTypes.isEmpty()) {
-            throw new OrchestrationException(
-                    "Укажите ТП изготовления детали: plannedProcessTypes не передан. Допустимые: CASTING, FORGING, MACHINING");
+            // stub-ветка решит: либо заглушка, либо throw (если stubEnabled=false)
+            return null;
         }
         if (plannedProcessTypes.size() > 3) {
             throw new OrchestrationException(
                     "Поддерживается не более 3 ТП на деталь; передано " + plannedProcessTypes.size());
         }
-        java.util.List<String> result = new java.util.ArrayList<>();
+        List<String> result = new ArrayList<>();
         for (String tp : plannedProcessTypes) {
             if (tp == null || tp.isBlank()) {
                 throw new OrchestrationException(
                         "plannedProcessTypes содержит пустое значение; допустимые: CASTING, FORGING, MACHINING");
             }
-            String normalized = tp.trim().toUpperCase(java.util.Locale.ROOT);
+            String normalized = tp.trim().toUpperCase(Locale.ROOT);
             switch (normalized) {
                 case "CASTING", "FORGING", "MACHINING" -> result.add(normalized);
                 default -> throw new OrchestrationException(
@@ -461,7 +618,7 @@ public class OrchestrationService {
 
     private Map<String, String> merge(Map<String, String> payload,
                                       String key, String value) {
-        Map<String, String> result = new java.util.HashMap<>();
+        Map<String, String> result = new HashMap<>();
         if (payload != null) {
             result.putAll(payload);
         }

@@ -14,32 +14,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OrchestrationResponseTest {
 
     @Test
-    @DisplayName("Пустой конструктор — все поля null")
-    void defaultConstructor_allNull() {
-        OrchestrationResponse r = new OrchestrationResponse();
-        assertThat(r.getProjectId()).isNull();
-        assertThat(r.getState()).isNull();
-        assertThat(r.getAvailableEvents()).isNull();
-        assertThat(r.getAwaitingUserAction()).isNull();
-    }
-
-    @Test
-    @DisplayName("Builder заполняет все поля")
-    void builder_setsAllFields() {
+    @DisplayName("builder: все поля заданы -> геттеры возвращают значения")
+    void builder_allFields_set() {
         Instant now = Instant.now();
-        Map<String, Object> attrs = Map.of("k", "v");
-
         OrchestrationResponse r = OrchestrationResponse.builder()
                 .projectId("p1")
                 .projectName("Корпус")
                 .designation("КР-001")
-                .objectType(Project.ObjectType.ASSEMBLY)
-                .state("PART_PROCESS_PLANNING")
-                .stateDisplayName("Проектирование ТП деталей")
+                .objectType(Project.ObjectType.PART)
+                .state("TOOLING_DESIGN")
+                .stateDisplayName("Проектирование оснастки")
                 .stateCategory("POINT_OF_CONTROL")
                 .pointOfControl(true)
-                .availableEvents(List.of("PART_PROCESS_READY"))
-                .currentStageId("stage-010")
+                .availableEvents(List.of("TOOLING_READY"))
+                .currentStageId("st-1")
                 .currentStageName("Токарная 010")
                 .progressPercent(42)
                 .completedStages(5)
@@ -47,21 +35,25 @@ class OrchestrationResponseTest {
                 .technologyProcessId("tp-1")
                 .recommendationId("rec-1")
                 .awaitingUserAction(true)
-                .message("Требуется подтверждение")
+                .message("msg")
+                .awaitingDecision(true)
+                .failedEvent("NORMS_READY")
+                .attempts(3)
+                .model(Map.of("material", "Steel 45"))
                 .updatedAt(now)
-                .attributes(attrs)
+                .attributes(Map.of("k", "v"))
                 .build();
 
         assertThat(r.getProjectId()).isEqualTo("p1");
         assertThat(r.getProjectName()).isEqualTo("Корпус");
         assertThat(r.getDesignation()).isEqualTo("КР-001");
-        assertThat(r.getObjectType()).isEqualTo(Project.ObjectType.ASSEMBLY);
-        assertThat(r.getState()).isEqualTo("PART_PROCESS_PLANNING");
-        assertThat(r.getStateDisplayName()).isEqualTo("Проектирование ТП деталей");
+        assertThat(r.getObjectType()).isEqualTo(Project.ObjectType.PART);
+        assertThat(r.getState()).isEqualTo("TOOLING_DESIGN");
+        assertThat(r.getStateDisplayName()).isEqualTo("Проектирование оснастки");
         assertThat(r.getStateCategory()).isEqualTo("POINT_OF_CONTROL");
         assertThat(r.getPointOfControl()).isTrue();
-        assertThat(r.getAvailableEvents()).containsExactly("PART_PROCESS_READY");
-        assertThat(r.getCurrentStageId()).isEqualTo("stage-010");
+        assertThat(r.getAvailableEvents()).containsExactly("TOOLING_READY");
+        assertThat(r.getCurrentStageId()).isEqualTo("st-1");
         assertThat(r.getCurrentStageName()).isEqualTo("Токарная 010");
         assertThat(r.getProgressPercent()).isEqualTo(42);
         assertThat(r.getCompletedStages()).isEqualTo(5);
@@ -69,118 +61,115 @@ class OrchestrationResponseTest {
         assertThat(r.getTechnologyProcessId()).isEqualTo("tp-1");
         assertThat(r.getRecommendationId()).isEqualTo("rec-1");
         assertThat(r.getAwaitingUserAction()).isTrue();
-        assertThat(r.getMessage()).isEqualTo("Требуется подтверждение");
+        assertThat(r.getMessage()).isEqualTo("msg");
+        assertThat(r.getAwaitingDecision()).isTrue();
+        assertThat(r.getFailedEvent()).isEqualTo("NORMS_READY");
+        assertThat(r.getAttempts()).isEqualTo(3);
+        assertThat(r.getModel()).containsEntry("material", "Steel 45");
         assertThat(r.getUpdatedAt()).isEqualTo(now);
-        assertThat(r.getAttributes()).isEqualTo(attrs);
+        assertThat(r.getAttributes()).containsEntry("k", "v");
     }
 
     @Test
-    @DisplayName("state(Object): enum -> toString, null -> null")
-    void stateObject_conversion() {
-        OrchestrationResponse r = OrchestrationResponse.builder()
-                .state(Project.ObjectType.ASSEMBLY).build();
-        assertThat(r.getState()).isEqualTo("ASSEMBLY");
+    @DisplayName("builder: пустой -> все null/false")
+    void builder_empty_defaults() {
+        OrchestrationResponse r = OrchestrationResponse.builder().build();
+        assertThat(r.getProjectId()).isNull();
+        assertThat(r.getState()).isNull();
+        assertThat(r.getAvailableEvents()).isNull();
+        assertThat(r.getPointOfControl()).isNull();
+        assertThat(r.getAwaitingUserAction()).isNull();
+        assertThat(r.getAwaitingDecision()).isNull();
+        assertThat(r.getFailedEvent()).isNull();
+        assertThat(r.getAttempts()).isNull();
+        assertThat(r.getModel()).isNull();
 
-        OrchestrationResponse nullState = OrchestrationResponse.builder().state((Object) null).build();
-        assertThat(nullState.getState()).isNull();
+        assertThat(r.isCompleted()).isFalse();
+        assertThat(r.isAwaitingUser()).isFalse();
+        assertThat(r.hasRecommendation()).isFalse();
     }
 
     @Test
-    @DisplayName("availableEvents(List<?>): любой список -> List<String>")
-    void availableEvents_conversion() {
+    @DisplayName("builder: state(Object) -> toString; availableEvents(List<?>) -> List<String>")
+    void builder_converters() {
         OrchestrationResponse r = OrchestrationResponse.builder()
-                .availableEvents(List.of(Project.ObjectType.PART, Project.ObjectType.ASSEMBLY))
+                .state(Project.ObjectType.PART)
+                .availableEvents(List.of(1, "two"))
                 .build();
-        assertThat(r.getAvailableEvents()).containsExactly("PART", "ASSEMBLY");
-
-        OrchestrationResponse nullEvents = OrchestrationResponse.builder()
-                .availableEvents(null).build();
-        assertThat(nullEvents.getAvailableEvents()).isNull();
+        assertThat(r.getState()).isEqualTo("PART");
+        assertThat(r.getAvailableEvents()).containsExactly("1", "two");
     }
 
     @Test
-    @DisplayName("isCompleted: только для state=COMPLETED")
-    void isCompleted() {
-        assertThat(OrchestrationResponse.builder().state("COMPLETED").build().isCompleted()).isTrue();
-        assertThat(OrchestrationResponse.builder().state("NORMING").build().isCompleted()).isFalse();
-        assertThat(new OrchestrationResponse().isCompleted()).isFalse();
+    @DisplayName("builder: null в state/availableEvents")
+    void builder_nullConversions() {
+        OrchestrationResponse r = OrchestrationResponse.builder()
+                .state((Object) null)
+                .availableEvents(null)
+                .build();
+        assertThat(r.getState()).isNull();
+        assertThat(r.getAvailableEvents()).isNull();
     }
 
     @Test
-    @DisplayName("isAwaitingUser: true при awaitingUserAction или pointOfControl")
-    void isAwaitingUser() {
-        assertThat(OrchestrationResponse.builder().awaitingUserAction(true).build().isAwaitingUser()).isTrue();
-        assertThat(OrchestrationResponse.builder().pointOfControl(true).build().isAwaitingUser()).isTrue();
-        assertThat(OrchestrationResponse.builder()
-                .awaitingUserAction(false).pointOfControl(false).build().isAwaitingUser()).isFalse();
-        assertThat(new OrchestrationResponse().isAwaitingUser()).isFalse();
+    @DisplayName("isCompleted: true только для COMPLETED")
+    void isCompleted_cases() {
+        OrchestrationResponse r = new OrchestrationResponse();
+        assertThat(r.isCompleted()).isFalse();
+        r.setState("TOOLING_DESIGN");
+        assertThat(r.isCompleted()).isFalse();
+        r.setState("COMPLETED");
+        assertThat(r.isCompleted()).isTrue();
     }
 
     @Test
-    @DisplayName("hasRecommendation: null/blank -> false, значение -> true")
-    void hasRecommendation() {
-        assertThat(new OrchestrationResponse().hasRecommendation()).isFalse();
-        assertThat(OrchestrationResponse.builder().recommendationId("   ").build().hasRecommendation()).isFalse();
-        assertThat(OrchestrationResponse.builder().recommendationId("rec-1").build().hasRecommendation()).isTrue();
+    @DisplayName("isAwaitingUser: awaitingUserAction/pointOfControl/awaitingDecision")
+    void isAwaitingUser_cases() {
+        OrchestrationResponse r = new OrchestrationResponse();
+        assertThat(r.isAwaitingUser()).isFalse();
+
+        r.setAwaitingUserAction(true);
+        assertThat(r.isAwaitingUser()).isTrue();
+
+        r = new OrchestrationResponse();
+        r.setPointOfControl(true);
+        assertThat(r.isAwaitingUser()).isTrue();
+
+        r = new OrchestrationResponse();
+        r.setAwaitingDecision(true);
+        assertThat(r.isAwaitingUser()).isTrue();
     }
 
     @Test
-    @DisplayName("equals/hashCode по projectId, state, updatedAt")
-    void equals_hashCode_byKeyFields() {
-        Instant now = Instant.now();
-        OrchestrationResponse a = OrchestrationResponse.builder()
-                .projectId("p1").state("NORMING").updatedAt(now).projectName("A").build();
-        OrchestrationResponse b = OrchestrationResponse.builder()
-                .projectId("p1").state("NORMING").updatedAt(now).projectName("B").build();
-
-        assertThat(a).isEqualTo(b);
-        assertThat(a).hasSameHashCodeAs(b);
+    @DisplayName("hasRecommendation: null/blank/ok")
+    void hasRecommendation_cases() {
+        OrchestrationResponse r = new OrchestrationResponse();
+        assertThat(r.hasRecommendation()).isFalse();
+        r.setRecommendationId("");
+        assertThat(r.hasRecommendation()).isFalse();
+        r.setRecommendationId("  ");
+        assertThat(r.hasRecommendation()).isFalse();
+        r.setRecommendationId("rec-1");
+        assertThat(r.hasRecommendation()).isTrue();
     }
 
     @Test
-    @DisplayName("equals: разница в state -> не равны")
-    void equals_diffState() {
+    @DisplayName("equals/hashCode/toString")
+    void equals_hashCode_toString() {
         Instant now = Instant.now();
         OrchestrationResponse a = OrchestrationResponse.builder()
                 .projectId("p1").state("NORMING").updatedAt(now).build();
         OrchestrationResponse b = OrchestrationResponse.builder()
-                .projectId("p1").state("DOCUMENTATION").updatedAt(now).build();
-        assertThat(a).isNotEqualTo(b);
-    }
+                .projectId("p1").state("NORMING").updatedAt(now).build();
+        OrchestrationResponse c = OrchestrationResponse.builder()
+                .projectId("p2").state("COMPLETED").updatedAt(now).build();
 
-    @Test
-    @DisplayName("equals: сравнение с null и с самим собой")
-    void equals_nullAndSelf() {
-        OrchestrationResponse a = OrchestrationResponse.builder().projectId("p1").build();
+        assertThat(a).isEqualTo(b).hasSameHashCodeAs(b);
+        assertThat(a).isNotEqualTo(c);
+        assertThat(a).isNotEqualTo(null).isNotEqualTo("other");
         assertThat(a).isEqualTo(a);
-        assertThat(a).isNotEqualTo(null);
-        assertThat(a).isNotEqualTo("string");
-    }
 
-    @Test
-    @DisplayName("toString содержит ключевые поля")
-    void toString_containsFields() {
-        OrchestrationResponse r = OrchestrationResponse.builder()
-                .projectId("p1").projectName("Корпус")
-                .state("NORMING").stateCategory("AUTOMATIC")
-                .awaitingUserAction(true).build();
-        assertThat(r.toString()).contains("p1", "Корпус", "NORMING", "AUTOMATIC", "true");
-    }
-
-    @Test
-    @DisplayName("Сеттеры меняют значения")
-    void setters_work() {
-        OrchestrationResponse r = new OrchestrationResponse();
-        r.setProjectId("p1");
-        r.setState("NORMING");
-        r.setStateCategory("AUTOMATIC");
-        r.setAwaitingUserAction(true);
-        r.setAvailableEvents(List.of("NORMS_READY"));
-
-        assertThat(r.getProjectId()).isEqualTo("p1");
-        assertThat(r.getState()).isEqualTo("NORMING");
-        assertThat(r.getStateCategory()).isEqualTo("AUTOMATIC");
-        assertThat(r.getAwaitingUserAction()).isTrue();
-        assertThat(r.getAvailableEvents()).containsExactly("NORMS_READY");
+        assertThat(a.toString())
+                .contains("p1").contains("NORMING");
     }
 }

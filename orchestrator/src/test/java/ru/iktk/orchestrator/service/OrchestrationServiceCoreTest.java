@@ -16,10 +16,11 @@ import org.springframework.statemachine.access.StateMachineAccessor;
 import org.springframework.statemachine.config.StateMachineFactory;
 import org.springframework.statemachine.state.State;
 import reactor.core.publisher.Mono;
+import ru.iktk.core.domain.Project;
 import ru.iktk.core.dto.OrchestrationRequest;
 import ru.iktk.core.dto.OrchestrationResponse;
-import ru.iktk.core.domain.Project;
 import ru.iktk.core.exception.OrchestrationException;
+import ru.iktk.orchestrator.config.OrchestratorProperties;
 import ru.iktk.orchestrator.messaging.ModuleCommandProducer;
 import ru.iktk.orchestrator.model.ProjectRuntime;
 import ru.iktk.orchestrator.repository.ProjectStateRepository;
@@ -38,19 +39,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("OrchestrationService — тесты оркестрации ИКТК")
-class OrchestrationServiceTest {
+@DisplayName("OrchestrationService — базовые операции (Core)")
+class OrchestrationServiceCoreTest {
 
     @Mock
     private StateMachineFactory<ProjectState, ProjectEvent> stateMachineFactory;
@@ -72,6 +71,9 @@ class OrchestrationServiceTest {
 
     @Mock
     private DecisionLogService decisionLogService;
+
+    @Mock
+    private OrchestratorProperties orchestratorProperties;
 
     @InjectMocks
     private OrchestrationService orchestrationService;
@@ -114,7 +116,15 @@ class OrchestrationServiceTest {
                 });
         when(projectStateRepository.findByProjectId(anyString()))
                 .thenAnswer(inv -> Optional.ofNullable(store.get(inv.getArgument(0))));
+
+        when(orchestratorProperties.isStubEnabled()).thenReturn(true);
+        when(orchestratorProperties.getStubProcessType()).thenReturn("MACHINING");
+        when(orchestratorProperties.getRetryMaxAttempts()).thenReturn(3);
     }
+
+    // =================================================================
+    // startProject
+    // =================================================================
 
     @Nested
     @DisplayName("startProject — создание и запуск проекта")
@@ -174,7 +184,105 @@ class OrchestrationServiceTest {
                     .isInstanceOf(OrchestrationException.class)
                     .hasMessageContaining("пуст");
         }
+
+        @Test
+        @DisplayName("PART без plannedProcessTypes + stubEnabled=true -> stub MACHINING (stubCode=1)")
+        void startProject_partWithoutTp_usesStub() {
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName("Part")
+                    .objectType(Project.ObjectType.PART)
+                    .build();
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class))).thenReturn(true);
+
+            orchestrationService.startProject(request);
+
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeastOnce()).save(captor.capture());
+            ProjectRuntime saved = captor.getAllValues().get(0);
+            assertThat(saved.getPayload()).containsEntry("tpType", "MACHINING");
+            assertThat(saved.getPayload()).containsEntry("tpSource", "STUB");
+            assertThat(saved.getPayload()).containsEntry("stubCode", 1);
+        }
+
+        @Test
+        @DisplayName("PART без plannedProcessTypes + stubEnabled=false -> OrchestrationException")
+        void startProject_partWithoutTp_stubDisabled_throws() {
+            when(orchestratorProperties.isStubEnabled()).thenReturn(false);
+
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName("Part")
+                    .objectType(Project.ObjectType.PART)
+                    .build();
+
+            assertThatThrownBy(() -> orchestrationService.startProject(request))
+                    .isInstanceOf(OrchestrationException.class)
+                    .hasMessageContaining("stub-enabled=false");
+        }
+
+        @Test
+        @DisplayName("stub CASTING -> stubCode=2")
+        void startProject_stubCasting_stubCode2() {
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName("P").objectType(Project.ObjectType.PART)
+                    .stubProcessType("CASTING").build();
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class))).thenReturn(true);
+            orchestrationService.startProject(request);
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeastOnce()).save(captor.capture());
+            assertThat(captor.getAllValues().get(0).getPayload())
+                    .containsEntry("tpType", "CASTING").containsEntry("stubCode", 2);
+        }
+
+        @Test
+        @DisplayName("stub FORGING -> stubCode=3")
+        void startProject_stubForging_stubCode3() {
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName("P").objectType(Project.ObjectType.PART)
+                    .stubProcessType("FORGING").build();
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class))).thenReturn(true);
+            orchestrationService.startProject(request);
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeastOnce()).save(captor.capture());
+            assertThat(captor.getAllValues().get(0).getPayload())
+                    .containsEntry("tpType", "FORGING").containsEntry("stubCode", 3);
+        }
+
+        @Test
+        @DisplayName("stub unknown -> OrchestrationException")
+        void startProject_unknownStub_throws() {
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName("P").objectType(Project.ObjectType.PART)
+                    .stubProcessType("SHEET_STAMPING").build();
+            assertThatThrownBy(() -> orchestrationService.startProject(request))
+                    .isInstanceOf(OrchestrationException.class)
+                    .hasMessageContaining("неизвестный ТП");
+        }
+
+        @Test
+        @DisplayName("startProject с geometryId: payload содержит objectRef")
+        void startProject_withGeometryId_payloadContainsObjectRef() {
+            OrchestrationRequest request = OrchestrationRequest.builder()
+                    .projectName(PROJECT_NAME)
+                    .geometryId("geom-42")
+                    .requestedBy(REQUESTED_BY)
+                    .plannedProcessTypes(java.util.List.of("CASTING"))
+                    .build();
+
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class)))
+                    .thenReturn(true);
+
+            orchestrationService.startProject(request);
+
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeastOnce()).save(captor.capture());
+            ProjectRuntime saved = captor.getAllValues().get(0);
+            assertThat(saved.getPayload()).containsEntry("objectRef", "geom-42");
+        }
     }
+
+    // =================================================================
+    // run
+    // =================================================================
 
     @Nested
     @DisplayName("run — продолжение оркестрации")
@@ -218,6 +326,10 @@ class OrchestrationServiceTest {
         }
     }
 
+    // =================================================================
+    // read state / summary
+    // =================================================================
+
     @Nested
     @DisplayName("Чтение состояния и сводки")
     class ReadStateTests {
@@ -260,6 +372,10 @@ class OrchestrationServiceTest {
         }
     }
 
+    // =================================================================
+    // approve
+    // =================================================================
+
     @Nested
     @DisplayName("approve — подтверждение точки контроля")
     class ApproveTests {
@@ -289,6 +405,7 @@ class OrchestrationServiceTest {
                     any(Map.class),
                     anyString());
         }
+
         @Test
         @DisplayName("Ошибка: подтверждение не предусмотрено для состояния")
         void approve_notAllowed_throws() {
@@ -304,6 +421,10 @@ class OrchestrationServiceTest {
                     .hasMessageContaining("подтверждение");
         }
     }
+
+    // =================================================================
+    // sendEvent
+    // =================================================================
 
     @Nested
     @DisplayName("sendEvent — внешнее событие")
@@ -348,6 +469,10 @@ class OrchestrationServiceTest {
                     .hasMessageContaining("не принято");
         }
     }
+
+    // =================================================================
+    // recommendations
+    // =================================================================
 
     @Nested
     @DisplayName("Точки контроля рекомендаций")
@@ -407,6 +532,10 @@ class OrchestrationServiceTest {
         }
     }
 
+    // =================================================================
+    // rollback
+    // =================================================================
+
     @Nested
     @DisplayName("rollback — откат к версии")
     class RollbackTests {
@@ -448,305 +577,62 @@ class OrchestrationServiceTest {
         }
     }
 
-    @Nested
-    @DisplayName("onModuleResult — результат от модуля")
-    class ModuleResultTests {
-
-        @Test
-        @DisplayName("Успешный результат: переход по событию")
-        void onModuleResult_success() {
-            runtime.setState(ProjectState.GEOMETRY_ANALYSIS);
-            when(projectStateRepository.findByProjectId(PROJECT_ID))
-                    .thenReturn(Optional.of(runtime));
-            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class)))
-                    .thenReturn(true);
-
-            orchestrationService.onModuleResult(
-                    PROJECT_ID,
-                    ProjectEvent.IS_PART,
-                    Map.of("result", "ok"),
-                    true);
-
-            verify(decisionLogService).log(
-                    eq(PROJECT_ID),
-                    eq("MODULE_RESULT_OK"),
-                    any(Map.class),
-                    anyString());
-        }
-
-        @Test
-        @DisplayName("Неуспешный результат: запуск retry")
-        void onModuleResult_failure_retries() {
-            runtime.setState(ProjectState.NORMING);
-            when(projectStateRepository.findByProjectId(PROJECT_ID))
-                    .thenReturn(Optional.of(runtime));
-            when(transitionHandler.incrementAttempt(eq(PROJECT_ID), any())).thenReturn(1);
-
-            orchestrationService.onModuleResult(
-                    PROJECT_ID,
-                    ProjectEvent.NORMS_READY,
-                    Map.of("error", "timeout"),
-                    false);
-
-            verify(moduleCommandProducer).retry(eq(PROJECT_ID), eq(ProjectEvent.NORMS_READY), any());
-            verify(decisionLogService).log(
-                    eq(PROJECT_ID),
-                    eq("MODULE_RESULT_FAIL"),
-                    any(Map.class),
-                    anyString());
-        }
-
-        @Test
-        @DisplayName("Исчерпание попыток: перевод в 'Ожидает решения'")
-        void onModuleResult_failure_attemptsExhausted() {
-            runtime.setState(ProjectState.NORMING);
-            when(projectStateRepository.findByProjectId(PROJECT_ID))
-                    .thenReturn(Optional.of(runtime));
-            when(transitionHandler.incrementAttempt(eq(PROJECT_ID), any())).thenReturn(3);
-
-            orchestrationService.onModuleResult(
-                    PROJECT_ID,
-                    ProjectEvent.NORMS_READY,
-                    Map.of("error", "timeout"),
-                    false);
-
-            verify(transitionHandler).moveToAwaitingDecision(any(), eq(PROJECT_ID), eq(ProjectEvent.NORMS_READY));
-            verify(decisionLogService).log(
-                    eq(PROJECT_ID),
-                    eq("MODULE_FAILED"),
-                    any(Map.class),
-                    anyString());
-        }
-    }
+    // =================================================================
+    // diagnostics (O-28)
+    // =================================================================
 
     @Nested
-    @DisplayName("Диагностика")
+    @DisplayName("Диагностика: getSummary отдаёт O-28-поля")
     class DiagnosticsTests {
 
         @Test
-        @DisplayName("activeProjects: возвращает список активных проектов")
-        void activeProjects_returnsList() {
-            List<String> projects = orchestrationService.activeProjects();
-
-            assertThat(projects).isNotNull();
-        }
-    }
-
-    // =========================================================================
-    // 10. Дополнительные ветки (PATCHED_EXTRA_TESTS)
-    // =========================================================================
-
-    @Nested
-    @DisplayName("Дополнительные ветки OrchestrationService")
-    class ExtraBranchTests {
-
-        @Test
-        @DisplayName("startProject с geometryId: payload содержит objectRef")
-        void startProject_withGeometryId_payloadContainsObjectRef() {
-            OrchestrationRequest request = OrchestrationRequest.builder()
-                    .projectName(PROJECT_NAME)
-                    .geometryId("geom-42")
-                    .requestedBy(REQUESTED_BY)
-                    .plannedProcessTypes(java.util.List.of("CASTING"))
-                    .build();
-
-            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class)))
-                    .thenReturn(true);
-
-            orchestrationService.startProject(request);
-
-            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
-            verify(projectStateRepository, atLeastOnce()).save(captor.capture());
-            ProjectRuntime saved = captor.getAllValues().get(0);
-            assertThat(saved.getPayload()).containsEntry("objectRef", "geom-42");
-        }
-
-        @Test
-        @DisplayName("onModuleResult: attempt == MAX_RETRIES (граница 3) -> moveToAwaitingDecision")
-        void onModuleResult_attemptEqualsMax_goesToAwaitingDecision() {
+        @DisplayName("getSummary: awaitingDecision + failedEvent + attempts из payload")
+        void getSummary_exposesO28Fields() {
             runtime.setState(ProjectState.NORMING);
-            when(projectStateRepository.findByProjectId(PROJECT_ID))
-                    .thenReturn(Optional.of(runtime));
-            when(transitionHandler.incrementAttempt(eq(PROJECT_ID), any())).thenReturn(3);
+            Map<String, Object> p = new HashMap<>();
+            p.put("awaitingDecision", true);
+            p.put("failedEvent", "NORMS_READY");
+            p.put("attempts", 3);
+            runtime.setPayload(p);
+            store.put(PROJECT_ID, runtime);
+            when(transitionHandler.availableEvents(ProjectState.NORMING)).thenReturn(List.of());
 
-            orchestrationService.onModuleResult(
-                    PROJECT_ID, ProjectEvent.NORMS_READY, Map.of("err", "x"), false);
+            OrchestrationResponse r = orchestrationService.getSummary(PROJECT_ID);
 
-            verify(moduleCommandProducer, never()).retry(anyString(), any(), any());
-            verify(transitionHandler).moveToAwaitingDecision(any(), eq(PROJECT_ID), eq(ProjectEvent.NORMS_READY));
+            assertThat(r.getAwaitingDecision()).isTrue();
+            assertThat(r.getFailedEvent()).isEqualTo("NORMS_READY");
+            assertThat(r.getAttempts()).isEqualTo(3);
+            assertThat(r.getAwaitingUserAction()).isTrue();
         }
 
         @Test
-        @DisplayName("dispatchEvent: auto-state с nextAuto != null -> рекурсивный переход")
-        void dispatchEvent_autoState_recurses() {
+        @DisplayName("getSummary: без awaitingDecision — поля null/false")
+        void getSummary_noDiagnostics() {
             runtime.setState(ProjectState.GEOMETRY_ANALYSIS);
-            when(projectStateRepository.findByProjectId(PROJECT_ID))
-                    .thenReturn(Optional.of(runtime));
-            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class)))
-                    .thenReturn(true);
+            runtime.setPayload(new HashMap<>());
+            store.put(PROJECT_ID, runtime);
+            when(transitionHandler.availableEvents(ProjectState.GEOMETRY_ANALYSIS)).thenReturn(List.of());
 
-            State<ProjectState, ProjectEvent> s1 = mock(State.class);
-            when(s1.getId()).thenReturn(ProjectState.GEOMETRY_ANALYSIS);
-            State<ProjectState, ProjectEvent> s2 = mock(State.class);
-            when(s2.getId()).thenReturn(ProjectState.NORMING);
-            when(stateMachine.getState()).thenReturn(s1, s2, s2);
+            OrchestrationResponse r = orchestrationService.getSummary(PROJECT_ID);
 
-            when(transitionHandler.isAutoState(ProjectState.GEOMETRY_ANALYSIS)).thenReturn(true);
-            when(transitionHandler.nextAuto(ProjectState.GEOMETRY_ANALYSIS)).thenReturn(ProjectEvent.IS_PART);
-
-            orchestrationService.onModuleResult(
-                    PROJECT_ID, ProjectEvent.IS_PART, Map.of(), true);
-
-            verify(stateMachine, atLeast(2)).sendEvent(any(org.springframework.messaging.Message.class));
+            assertThat(r.getAwaitingDecision()).isFalse();
+            assertThat(r.getFailedEvent()).isNull();
+            assertThat(r.getAttempts()).isNull();
         }
 
         @Test
-        @DisplayName("obtainMachine: повторный вызов возвращает тот же StateMachine (кэш)")
-        void obtainMachine_cachesPerProject() {
-            runtime.setState(ProjectState.PROJECT_INIT);
-            when(projectStateRepository.findByProjectId(PROJECT_ID))
-                    .thenReturn(Optional.of(runtime));
-
-            orchestrationService.getSummary(PROJECT_ID);
-            orchestrationService.getSummary(PROJECT_ID);
-
-            verify(stateMachineFactory, times(1)).getStateMachine(anyString());
-        }
-
-        @Test
-        @DisplayName("currentActor: читает X-User-Id из HTTP-запроса")
-        void currentActor_readsHeader() {
-            runtime.setState(ProjectState.GEOMETRY_ANALYSIS);
-            when(projectStateRepository.findByProjectId(PROJECT_ID))
-                    .thenReturn(Optional.of(runtime));
-            doAnswer(inv -> null).when(transitionHandler).route(anyString(), any(), any(), any());
-
-            var request = new org.springframework.mock.web.MockHttpServletRequest();
-            request.addHeader("X-User-Id", "user-777");
-            org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
-                    new org.springframework.web.context.request.ServletRequestAttributes(request));
-            try {
-                orchestrationService.run(PROJECT_ID);
-            } finally {
-                org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
-            }
-
-            verify(decisionLogService).log(
-                    eq(PROJECT_ID), eq("ORCHESTRATION_RUN"), any(Map.class), eq("user-777"));
-        }
-    }    @org.junit.jupiter.api.Test
-    @org.junit.jupiter.api.DisplayName("startProject: PART without plannedProcessTypes throws")
-    void startProject_partWithoutTp_throws() {
-        OrchestrationRequest request = OrchestrationRequest.builder()
-                .projectName("Part")
-                .objectType(Project.ObjectType.PART)
-                .build();
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> orchestrationService.startProject(request))
-                .isInstanceOf(OrchestrationException.class)
-                .hasMessageContaining("plannedProcessTypes");
-    }
-
-    @Nested
-    @DisplayName("Sequential forging -> machining (сессия 32)")
-    class SequentialTests {
-
-        @Test
-        @DisplayName("startProject 2 ТП -> tpType=FORGING, pendingProcessTypes=[MACHINING]")
-        void startProject_multiTp_pendingPopulated() {
-            OrchestrationRequest request = OrchestrationRequest.builder()
-                    .projectName("Seq")
-                    .requestedBy("ivanov")
-                    .plannedProcessTypes(List.of("FORGING", "MACHINING"))
-                    .build();
-
-            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class))).thenReturn(true);
-            orchestrationService.startProject(request);
-
-            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
-            verify(projectStateRepository, atLeast(1)).save(captor.capture());
-            ProjectRuntime saved = captor.getAllValues().stream()
-                    .filter(r -> r.getPayload() != null && r.getPayload().containsKey("pendingProcessTypes"))
-                    .findFirst().orElseThrow();
-            assertThat(saved.getPayload().get("tpType")).isEqualTo("FORGING");
-            List<?> pendingSaved = (List<?>) saved.getPayload().get("pendingProcessTypes");
-            assertThat(pendingSaved).hasSize(1);
-            assertThat(pendingSaved.get(0)).isEqualTo("MACHINING");
-        }
-
-        @Test
-        @DisplayName("onModuleResult PART_PROCESS_READY + pending -> route next, БЕЗ sendEvent")
-        void onModuleResult_sequential_routeToNext() {
-            runtime.setState(ProjectState.PART_PROCESS_PLANNING);
+        @DisplayName("getSummary: attempts приходит строкой — парсится в Integer")
+        void getSummary_attemptsAsString_parsed() {
+            runtime.setState(ProjectState.NORMING);
             Map<String, Object> p = new HashMap<>();
-            p.put("tpType", "FORGING");
-            p.put("pendingProcessTypes", new java.util.ArrayList<>(List.of("MACHINING")));
+            p.put("attempts", "2");
             runtime.setPayload(p);
             store.put(PROJECT_ID, runtime);
+            when(transitionHandler.availableEvents(ProjectState.NORMING)).thenReturn(List.of());
 
-            orchestrationService.onModuleResult(PROJECT_ID, ProjectEvent.PART_PROCESS_READY,
-                    new HashMap<>(), true);
+            OrchestrationResponse r = orchestrationService.getSummary(PROJECT_ID);
 
-            verify(transitionHandler).route(eq(PROJECT_ID), eq(ProjectState.PART_PROCESS_PLANNING),
-                    any(StateMachine.class), any(Map.class));
-            verify(stateMachine, never()).sendEvent(any(org.springframework.messaging.Message.class));
-            verify(decisionLogService).log(eq(PROJECT_ID), eq("SEQUENTIAL_NEXT"), any(Map.class), any());
-            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
-            verify(projectStateRepository, atLeast(1)).save(captor.capture());
-            ProjectRuntime saved = captor.getAllValues().get(captor.getAllValues().size() - 1);
-            assertThat(saved.getPayload().get("tpType")).isEqualTo("MACHINING");
-            assertThat(saved.getPayload().containsKey("pendingProcessTypes")).isFalse();
-        }
-
-        @Test
-        @DisplayName("onModuleResult sequential: MODULE_RESULT_OK для промежуточного ТП пишется в decision_log")
-        void onModuleResult_sequential_logsModuleResultOk() {
-            runtime.setState(ProjectState.PART_PROCESS_PLANNING);
-            Map<String, Object> p = new HashMap<>();
-            p.put("tpType", "FORGING");
-            p.put("pendingProcessTypes", new java.util.ArrayList<>(List.of("MACHINING")));
-            runtime.setPayload(p);
-            store.put(PROJECT_ID, runtime);
-
-            orchestrationService.onModuleResult(PROJECT_ID, ProjectEvent.PART_PROCESS_READY,
-                    new HashMap<>(), true);
-
-            verify(decisionLogService).log(eq(PROJECT_ID), eq("MODULE_RESULT_OK"), any(Map.class), any());
-            verify(decisionLogService).log(eq(PROJECT_ID), eq("SEQUENTIAL_NEXT"), any(Map.class), any());
-        }
-
-        @Test
-        @DisplayName("onModuleResult PART_PROCESS_READY без pending -> legacy dispatchEvent")
-        void onModuleResult_lastSequential_sendEvent() {
-            runtime.setState(ProjectState.PART_PROCESS_PLANNING);
-            Map<String, Object> p = new HashMap<>();
-            p.put("tpType", "MACHINING");
-            runtime.setPayload(p);
-            store.put(PROJECT_ID, runtime);
-
-            State<ProjectState, ProjectEvent> tooling = mock(State.class);
-            when(tooling.getId()).thenReturn(ProjectState.TOOLING_DESIGN);
-            when(stateMachine.getState()).thenReturn(tooling);
-            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class))).thenReturn(true);
-
-            orchestrationService.onModuleResult(PROJECT_ID, ProjectEvent.PART_PROCESS_READY,
-                    new HashMap<>(), true);
-
-            verify(stateMachine).sendEvent(any(org.springframework.messaging.Message.class));
-            verify(decisionLogService, never()).log(eq(PROJECT_ID), eq("SEQUENTIAL_NEXT"), any(Map.class), any());
-        }
-
-        @Test
-        @DisplayName("startProject 4 ТП -> OrchestrationException (максимум 3)")
-        void startProject_4Tp_throws() {
-            OrchestrationRequest request = OrchestrationRequest.builder()
-                    .projectName("Too many")
-                    .requestedBy("ivanov")
-                    .plannedProcessTypes(List.of("CASTING", "FORGING", "MACHINING", "CASTING"))
-                    .build();
-
-            assertThatThrownBy(() -> orchestrationService.startProject(request))
-                    .isInstanceOf(OrchestrationException.class)
-                    .hasMessageContaining("не более 3");
+            assertThat(r.getAttempts()).isEqualTo(2);
         }
     }
 }

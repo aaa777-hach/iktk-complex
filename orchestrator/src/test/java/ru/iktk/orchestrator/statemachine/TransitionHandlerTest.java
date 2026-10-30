@@ -141,12 +141,37 @@ class TransitionHandlerTest {
     }
 
     @Test
-    @DisplayName("route: PART_PROCESS_PLANNING — исключение из точки контроля, send + ROUTED")
-    void route_partProcessPlanning_sendsDespitePointOfControl() {
-        handler.route("p1", ProjectState.PART_PROCESS_PLANNING, stateMachine, null);
+    @DisplayName("route: PART_PROCESS_PLANNING без tpType -> OrchestrationException (O-19)")
+    void route_partProcessPlanning_withoutTp_throws() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        handler.route("p1", ProjectState.PART_PROCESS_PLANNING, stateMachine, null))
+                .isInstanceOf(OrchestrationException.class)
+                .hasMessageContaining("tpType");
+
+        verify(moduleCommandProducer, never()).send(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("route: PART_PROCESS_PLANNING с неизвестным tpType -> OrchestrationException (O-19)")
+    void route_partProcessPlanning_unknownTp_throws() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        handler.route("p1", ProjectState.PART_PROCESS_PLANNING, stateMachine,
+                                Map.of("tpType", "SHEET_STAMPING")))
+                .isInstanceOf(OrchestrationException.class)
+                .hasMessageContaining("неизвестный tpType");
+
+        verify(moduleCommandProducer, never()).send(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("route: PART_PROCESS_PLANNING + tpType=MACHINING (STUB) -> send в machining + ROUTED")
+    void route_partProcessPlanning_withTp_routesToMachining() {
+        handler.route("p1", ProjectState.PART_PROCESS_PLANNING, stateMachine,
+                Map.of("tpType", "MACHINING", "tpSource", "STUB", "stubCode", 1));
 
         verify(moduleCommandProducer).send(
-                eq("p1"), eq("casting"), eq(ProjectState.PART_PROCESS_PLANNING), any());
+                eq("p1"), eq("machining"), eq(ProjectState.PART_PROCESS_PLANNING), any());
+        verify(decisionLogService).log(eq("p1"), eq("PART_PROCESS_PLANNING"), any(Map.class), eq("SYSTEM"));
         verify(decisionLogService).log(eq("p1"), eq("ROUTED"), any(Map.class));
     }
 

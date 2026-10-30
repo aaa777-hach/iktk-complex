@@ -1,3 +1,4 @@
+
 package ru.iktk.orchestrator.statemachine;
 
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import ru.iktk.orchestrator.service.DecisionLogService;
 
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -86,30 +88,35 @@ public class TransitionHandler {
                       ProjectState state,
                       StateMachine<ProjectState, ProjectEvent> sm,
                       Map<String, ?> payload) {
-                String module = ROUTES.get(state);
+        String module = ROUTES.get(state);
 
         if (state == ProjectState.PART_PROCESS_PLANNING) {
+            // O-19: без tpType или с неизвестным tpType — throw, не тихий fallback в casting.
             String tpType = payload == null ? null : String.valueOf(payload.get("tpType"));
-            if (tpType != null && !tpType.isBlank() && !"null".equals(tpType)) {
-                String routed = switch (tpType.toUpperCase(java.util.Locale.ROOT)) {
-                    case "CASTING"   -> "casting";
-                    case "FORGING"   -> "forging";
-                    case "MACHINING" -> "machining";
-                    default          -> null;
-                };
-                if (routed != null) {
-                    module = routed;
-                    decisionLogService.log(projectId, "PART_PROCESS_PLANNING",
-                            Map.of("tp", tpType.toUpperCase(java.util.Locale.ROOT),
-                                    "source", (payload.get("tpSource") != null ? String.valueOf(payload.get("tpSource")) : "USER"),
-                                    "module", module),
-                            "SYSTEM");
-                } else {
-                    log.warn("route: PART_PROCESS_PLANNING, unknown tpType={} (projectId={}) - fallback", tpType, projectId);
-                }
-            } else {
-                log.warn("route: PART_PROCESS_PLANNING without tpType (projectId={}) - fallback", projectId);
+            if (tpType == null || tpType.isBlank() || "null".equals(tpType)) {
+                throw new OrchestrationException(
+                        "PART_PROCESS_PLANNING: не указан tpType в payload (projectId=" + projectId + "). "
+                                + "Допустимые: CASTING, FORGING, MACHINING");
             }
+            String normalized = tpType.trim().toUpperCase(Locale.ROOT);
+            String routed = switch (normalized) {
+                case "CASTING"   -> "casting";
+                case "FORGING"   -> "forging";
+                case "MACHINING" -> "machining";
+                default          -> null;
+            };
+            if (routed == null) {
+                throw new OrchestrationException(
+                        "PART_PROCESS_PLANNING: неизвестный tpType=" + tpType
+                                + " (projectId=" + projectId + "). Допустимые: CASTING, FORGING, MACHINING");
+            }
+            module = routed;
+            String source = payload.get("tpSource") != null
+                    ? String.valueOf(payload.get("tpSource"))
+                    : "USER";
+            decisionLogService.log(projectId, "PART_PROCESS_PLANNING",
+                    Map.of("tp", normalized, "source", source, "module", module),
+                    "SYSTEM");
         }
 
         if (module == null) {
@@ -271,11 +278,6 @@ public class TransitionHandler {
                 ),
                 "SYSTEM"
         );
-
-        // Отправляем специальное событие, если оно предусмотрено,
-        // иначе оставляем проект в текущем состоянии — точка контроля.
-        // Здесь оркестратор просто фиксирует состояние «Ожидает решения»
-        // и не двигает автомат дальше; внешний сервис решений вызовет нужное событие.
     }
 
     // ------------------------------------------------------------------

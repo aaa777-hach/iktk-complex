@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import ru.iktk.core.domain.Project;
 
 import java.io.Serializable;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -22,6 +23,9 @@ import java.util.Objects;
  *   <li>тип объекта изготовления (деталь/сборка);</li>
  *   <li>инициатор и ответственный;</li>
  *   <li>идентификатор геометрии (если уже загружена);</li>
+ *   <li>информацию о модели (material/volume/mass/complexity/warnings) —
+ *       из ответа {@code POST /api/v1/geometry/from-step};</li>
+ *   <li>заглушку выбора ТП ({@code stubProcessType}) — на первом этапе;</li>
  *   <li>произвольные атрибуты (payload) для расширений.</li>
  * </ul>
  *
@@ -93,7 +97,45 @@ public class OrchestrationRequest implements Serializable {
 
     @Schema(description = "Список ТП, запланированных к проектированию",
             example = "[\"CASTING\",\"MACHINING\",\"ASSEMBLY\"]")
-    private java.util.List<String> plannedProcessTypes;
+    private List<String> plannedProcessTypes;
+
+    // ------------------------------------------------------------------
+    // Заглушка выбора ТП (на первом этапе — без анализа модели)
+    // ------------------------------------------------------------------
+
+    /**
+     * Заглушка выбора ТП. Если {@code plannedProcessTypes} не задан,
+     * оркестратор берёт ТП отсюда (или из конфига
+     * {@code iktk.orchestrator.stub-process-type}).
+     *
+     * <p>Допустимые значения: {@code MACHINING}, {@code CASTING}, {@code FORGING}.
+     * Коды заглушки: MACHINING → 1, CASTING → 2, FORGING → 3.
+     */
+    @Schema(description = "Заглушка выбора ТП (MACHINING/CASTING/FORGING)",
+            example = "MACHINING")
+    @Size(max = 32)
+    private String stubProcessType;
+
+    // ------------------------------------------------------------------
+    // Информация о модели (из ответа POST /api/v1/geometry/from-step)
+    // ------------------------------------------------------------------
+
+    @Schema(description = "Материал детали (эвристика integration)", example = "Steel 45")
+    @Size(max = 128)
+    private String material;
+
+    @Schema(description = "Объём модели, мм^3 (эвристика integration)", example = "125000.0")
+    private Double volume;
+
+    @Schema(description = "Масса модели, кг (эвристика integration)", example = "0.98")
+    private Double mass;
+
+    @Schema(description = "Оценка сложности модели (эвристика integration)", example = "3")
+    private Integer complexity;
+
+    @Schema(description = "Предупреждения о достоверности эвристик",
+            example = "[\"material not detected: fallback Steel 45\"]")
+    private List<String> warnings;
 
     // ------------------------------------------------------------------
     // Расширения
@@ -144,7 +186,13 @@ public class OrchestrationRequest implements Serializable {
         private String responsibleEngineer;
         private String geometryId;
         private String assemblyId;
-        private java.util.List<String> plannedProcessTypes;
+        private List<String> plannedProcessTypes;
+        private String stubProcessType;
+        private String material;
+        private Double volume;
+        private Double mass;
+        private Integer complexity;
+        private List<String> warnings;
         private Map<String, Object> payload;
 
         public Builder projectName(String projectName) {
@@ -192,8 +240,38 @@ public class OrchestrationRequest implements Serializable {
             return this;
         }
 
-        public Builder plannedProcessTypes(java.util.List<String> plannedProcessTypes) {
+        public Builder plannedProcessTypes(List<String> plannedProcessTypes) {
             this.plannedProcessTypes = plannedProcessTypes;
+            return this;
+        }
+
+        public Builder stubProcessType(String stubProcessType) {
+            this.stubProcessType = stubProcessType;
+            return this;
+        }
+
+        public Builder material(String material) {
+            this.material = material;
+            return this;
+        }
+
+        public Builder volume(Double volume) {
+            this.volume = volume;
+            return this;
+        }
+
+        public Builder mass(Double mass) {
+            this.mass = mass;
+            return this;
+        }
+
+        public Builder complexity(Integer complexity) {
+            this.complexity = complexity;
+            return this;
+        }
+
+        public Builder warnings(List<String> warnings) {
+            this.warnings = warnings;
             return this;
         }
 
@@ -214,6 +292,12 @@ public class OrchestrationRequest implements Serializable {
             r.geometryId = this.geometryId;
             r.assemblyId = this.assemblyId;
             r.plannedProcessTypes = this.plannedProcessTypes;
+            r.stubProcessType = this.stubProcessType;
+            r.material = this.material;
+            r.volume = this.volume;
+            r.mass = this.mass;
+            r.complexity = this.complexity;
+            r.warnings = this.warnings;
             r.payload = this.payload;
             return r;
         }
@@ -241,6 +325,17 @@ public class OrchestrationRequest implements Serializable {
     /** Проверка: указана ли сборка. */
     public boolean hasAssembly() {
         return assemblyId != null && !assemblyId.isBlank();
+    }
+
+    /** Проверка: задана ли заглушка ТП. */
+    public boolean hasStubProcessType() {
+        return stubProcessType != null && !stubProcessType.isBlank();
+    }
+
+    /** Проверка: есть ли эвристики модели (material/volume/mass/complexity/warnings). */
+    public boolean hasModelInfo() {
+        return material != null || volume != null || mass != null
+                || complexity != null || (warnings != null && !warnings.isEmpty());
     }
 
     // ------------------------------------------------------------------
@@ -319,12 +414,60 @@ public class OrchestrationRequest implements Serializable {
         this.assemblyId = assemblyId;
     }
 
-    public java.util.List<String> getPlannedProcessTypes() {
+    public List<String> getPlannedProcessTypes() {
         return plannedProcessTypes;
     }
 
-    public void setPlannedProcessTypes(java.util.List<String> plannedProcessTypes) {
+    public void setPlannedProcessTypes(List<String> plannedProcessTypes) {
         this.plannedProcessTypes = plannedProcessTypes;
+    }
+
+    public String getStubProcessType() {
+        return stubProcessType;
+    }
+
+    public void setStubProcessType(String stubProcessType) {
+        this.stubProcessType = stubProcessType;
+    }
+
+    public String getMaterial() {
+        return material;
+    }
+
+    public void setMaterial(String material) {
+        this.material = material;
+    }
+
+    public Double getVolume() {
+        return volume;
+    }
+
+    public void setVolume(Double volume) {
+        this.volume = volume;
+    }
+
+    public Double getMass() {
+        return mass;
+    }
+
+    public void setMass(Double mass) {
+        this.mass = mass;
+    }
+
+    public Integer getComplexity() {
+        return complexity;
+    }
+
+    public void setComplexity(Integer complexity) {
+        this.complexity = complexity;
+    }
+
+    public List<String> getWarnings() {
+        return warnings;
+    }
+
+    public void setWarnings(List<String> warnings) {
+        this.warnings = warnings;
     }
 
     public Map<String, Object> getPayload() {
@@ -367,6 +510,8 @@ public class OrchestrationRequest implements Serializable {
                 ", requestedBy='" + requestedBy + '\'' +
                 ", geometryId='" + geometryId + '\'' +
                 ", assemblyId='" + assemblyId + '\'' +
+                ", stubProcessType='" + stubProcessType + '\'' +
+                ", material='" + material + '\'' +
                 '}';
     }
 }

@@ -31,6 +31,8 @@ import java.util.Objects;
  *   <li>список доступных событий — для UI и точек контроля;</li>
  *   <li>сведения о текущем этапе и прогрессе;</li>
  *   <li>ссылку на рекомендации (если применимо);</li>
+ *   <li>признак «ожидает решения» после исчерпания retry (O-28);</li>
+ *   <li>информацию о модели (material/volume/mass/warnings) — для UI;</li>
  *   <li>диагностические поля (сообщение, время обновления).</li>
  * </ul>
  *
@@ -127,6 +129,28 @@ public class OrchestrationResponse implements Serializable {
     private String message;
 
     // ------------------------------------------------------------------
+    // O-28: «Ожидает решения» после исчерпания retry
+    // ------------------------------------------------------------------
+
+    @Schema(description = "Проект ожидает решения технолога после исчерпания retry",
+            example = "true")
+    private Boolean awaitingDecision;
+
+    @Schema(description = "Событие, по которому исчерпаны попытки",
+            example = "NORMS_READY")
+    private String failedEvent;
+
+    @Schema(description = "Число выполненных попыток", example = "3")
+    private Integer attempts;
+
+    // ------------------------------------------------------------------
+    // Задача 2: информация о модели (из payload проекта)
+    // ------------------------------------------------------------------
+
+    @Schema(description = "Информация о модели: geometryId, material, volume, mass, complexity, warnings, tpType, tpSource, stubCode")
+    private Map<String, Object> model;
+
+    // ------------------------------------------------------------------
     // Диагностика
     // ------------------------------------------------------------------
 
@@ -163,6 +187,10 @@ public class OrchestrationResponse implements Serializable {
         this.recommendationId = b.recommendationId;
         this.awaitingUserAction = b.awaitingUserAction;
         this.message = b.message;
+        this.awaitingDecision = b.awaitingDecision;
+        this.failedEvent = b.failedEvent;
+        this.attempts = b.attempts;
+        this.model = b.model;
         this.updatedAt = b.updatedAt;
         this.attributes = b.attributes;
     }
@@ -198,6 +226,10 @@ public class OrchestrationResponse implements Serializable {
         private String recommendationId;
         private Boolean awaitingUserAction;
         private String message;
+        private Boolean awaitingDecision;
+        private String failedEvent;
+        private Integer attempts;
+        private Map<String, Object> model;
         private Instant updatedAt;
         private Map<String, Object> attributes;
 
@@ -293,6 +325,26 @@ public class OrchestrationResponse implements Serializable {
             return this;
         }
 
+        public Builder awaitingDecision(Boolean awaitingDecision) {
+            this.awaitingDecision = awaitingDecision;
+            return this;
+        }
+
+        public Builder failedEvent(String failedEvent) {
+            this.failedEvent = failedEvent;
+            return this;
+        }
+
+        public Builder attempts(Integer attempts) {
+            this.attempts = attempts;
+            return this;
+        }
+
+        public Builder model(Map<String, Object> model) {
+            this.model = model;
+            return this;
+        }
+
         public Builder updatedAt(Instant updatedAt) {
             this.updatedAt = updatedAt;
             return this;
@@ -320,7 +372,8 @@ public class OrchestrationResponse implements Serializable {
     /** Проект ожидает решения пользователя. */
     public boolean isAwaitingUser() {
         return Boolean.TRUE.equals(awaitingUserAction)
-                || Boolean.TRUE.equals(pointOfControl);
+                || Boolean.TRUE.equals(pointOfControl)
+                || Boolean.TRUE.equals(awaitingDecision);
     }
 
     /** Имеется активная рекомендация. */
@@ -476,6 +529,38 @@ public class OrchestrationResponse implements Serializable {
         this.message = message;
     }
 
+    public Boolean getAwaitingDecision() {
+        return awaitingDecision;
+    }
+
+    public void setAwaitingDecision(Boolean awaitingDecision) {
+        this.awaitingDecision = awaitingDecision;
+    }
+
+    public String getFailedEvent() {
+        return failedEvent;
+    }
+
+    public void setFailedEvent(String failedEvent) {
+        this.failedEvent = failedEvent;
+    }
+
+    public Integer getAttempts() {
+        return attempts;
+    }
+
+    public void setAttempts(Integer attempts) {
+        this.attempts = attempts;
+    }
+
+    public Map<String, Object> getModel() {
+        return model;
+    }
+
+    public void setModel(Map<String, Object> model) {
+        this.model = model;
+    }
+
     public Instant getUpdatedAt() {
         return updatedAt;
     }
@@ -523,6 +608,9 @@ public class OrchestrationResponse implements Serializable {
                 ", stateCategory='" + stateCategory + '\'' +
                 ", availableEvents=" + availableEvents +
                 ", awaitingUserAction=" + awaitingUserAction +
+                ", awaitingDecision=" + awaitingDecision +
+                ", failedEvent='" + failedEvent + '\'' +
+                ", attempts=" + attempts +
                 ", updatedAt=" + updatedAt +
                 '}';
     }
