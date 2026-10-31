@@ -19,6 +19,7 @@ import ru.iktk.orchestrator.repository.ProjectStateRepository;
 import ru.iktk.orchestrator.statemachine.ProjectEvent;
 import ru.iktk.orchestrator.statemachine.ProjectState;
 import ru.iktk.orchestrator.statemachine.TransitionHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -41,6 +42,8 @@ public class OrchestrationService {
             "CASTING",   2,
             "FORGING",   3
     );
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final StateMachineFactory<ProjectState, ProjectEvent> stateMachineFactory;
     private final ProjectStateRepository projectStateRepository;
@@ -316,8 +319,25 @@ public class OrchestrationService {
      */
     private boolean hasPendingTypes(ProjectRuntime runtime) {
         if (runtime == null || runtime.getPayload() == null) return false;
-        Object p = runtime.getPayload().get("pendingProcessTypes");
-        return p instanceof List && !((List<?>) p).isEmpty();
+        return asPendingList(runtime.getPayload().get("pendingProcessTypes")) != null;
+    }
+
+    // O-34: tolerant pendingProcessTypes parsing (List or JSON string).
+    // Returns null when absent, empty, or unparsable.
+    private List<?> asPendingList(Object p) {
+        if (p instanceof List<?> l) {
+            return l.isEmpty() ? null : l;
+        }
+        if (p instanceof String s && !s.isBlank()) {
+            try {
+                List<?> l = JSON.readValue(s, List.class);
+                return (l == null || l.isEmpty()) ? null : l;
+            } catch (Exception e) {
+                log.warn("asPendingList: failed to parse pendingProcessTypes as JSON: {}", s);
+                return null;
+            }
+        }
+        return null;
     }
 
     /**
@@ -325,11 +345,17 @@ public class OrchestrationService {
      * state machine остаётся в PART_PROCESS_PLANNING (без sendEvent).
      */
     private void handleSequentialNext(String projectId, ProjectRuntime runtime, Map<String, String> payload) {
-        List<?> pending = (List<?>) runtime.getPayload().get("pendingProcessTypes");
+        List<?> pending = asPendingList(runtime.getPayload().get("pendingProcessTypes"));
+        if (pending == null) {
+            log.warn("handleSequentialNext: pendingProcessTypes empty/invalid, projectId={}", projectId);
+            return;
+        }
         String nextType = String.valueOf(pending.get(0));
         List<Object> remaining = new ArrayList<>(pending.subList(1, pending.size()));
 
         Map<String, Object> newPayload = new HashMap<>(runtime.getPayload());
+        // O-34: merge consumer payload first; tpType/pendingProcessTypes below take precedence.
+        if (payload != null) newPayload.putAll(payload);
         newPayload.put("tpType", nextType);
         newPayload.put("tpSource", "SEQUENTIAL");
         if (remaining.isEmpty()) {
@@ -337,7 +363,6 @@ public class OrchestrationService {
         } else {
             newPayload.put("pendingProcessTypes", remaining);
         }
-        if (payload != null) newPayload.putAll(payload);
 
         runtime.setPayload(newPayload);
         projectStateRepository.save(runtime);
@@ -413,7 +438,15 @@ public class OrchestrationService {
             if (rt.getPayload() != null) {
                 merged.putAll(rt.getPayload());
             }
-            merged.putAll(payload);
+            // O-34: pendingProcessTypes and tpType are owned by startProject/handleSequentialNext.
+            // Do not merge them from consumer payload (arrays arrive as JSON strings there).
+            for (Map.Entry<String, String> e : payload.entrySet()) {
+                String k = e.getKey();
+                if ("pendingProcessTypes".equals(k) || "tpType".equals(k)) {
+                    continue;
+                }
+                merged.put(k, e.getValue());
+            }
             rt.setPayload(merged);
             projectStateRepository.save(rt);
         }

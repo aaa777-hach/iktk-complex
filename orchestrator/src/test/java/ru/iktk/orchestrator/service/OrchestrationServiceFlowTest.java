@@ -316,6 +316,80 @@ class OrchestrationServiceFlowTest {
             verify(stateMachineFactory, org.mockito.Mockito.times(1)).getStateMachine(anyString());
         }
     }
+    // =================================================================
+    // O-34: sequential via RabbitMQ (pendingProcessTypes as List and as JSON string)
+    // =================================================================
+
+    @Nested
+    @DisplayName("O-34 sequential via RabbitMQ")
+    class O34SequentialTests {
+
+        @Test
+        @DisplayName("hasPendingTypes: JSON string '[\"MACHINING\"]' -> true (compat)")
+        void hasPendingTypes_jsonString_returnsTrue() {
+            runtime.setState(ProjectState.PART_PROCESS_PLANNING);
+            Map<String, Object> p = new HashMap<>();
+            p.put("pendingProcessTypes", "[\"MACHINING\"]");
+            runtime.setPayload(p);
+            store.put(PROJECT_ID, runtime);
+
+            orchestrationService.onModuleResult(
+                    PROJECT_ID, ProjectEvent.PART_PROCESS_READY, new HashMap<>(), true);
+
+            verify(decisionLogService).log(eq(PROJECT_ID), eq("SEQUENTIAL_NEXT"), any(Map.class), any());
+        }
+
+        @Test
+        @DisplayName("dispatchEvent does not overwrite pendingProcessTypes from consumer payload")
+        void dispatchEvent_doesNotOverwritePendingTypes() {
+            runtime.setState(ProjectState.NORMING);
+            Map<String, Object> p = new HashMap<>();
+            p.put("pendingProcessTypes", new java.util.ArrayList<>(List.of("MACHINING")));
+            runtime.setPayload(p);
+            store.put(PROJECT_ID, runtime);
+
+            State<ProjectState, ProjectEvent> next = mock(State.class);
+            when(next.getId()).thenReturn(ProjectState.TOOLING_DESIGN);
+            when(stateMachine.getState()).thenReturn(next);
+            when(stateMachine.sendEvent(any(org.springframework.messaging.Message.class))).thenReturn(true);
+
+            orchestrationService.onModuleResult(
+                    PROJECT_ID, ProjectEvent.NORMS_READY,
+                    Map.of("pendingProcessTypes", "[\"FORGING\"]", "tpType", "CASTING"), true);
+
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeastOnce()).save(captor.capture());
+            Object stored = captor.getAllValues().get(captor.getAllValues().size() - 1)
+                    .getPayload().get("pendingProcessTypes");
+            assertThat(stored).isInstanceOf(java.util.List.class);
+            @SuppressWarnings("unchecked")
+            java.util.List<String> storedList = (java.util.List<String>) stored;
+            assertThat(storedList).containsExactly("MACHINING");
+        }
+
+        @Test
+        @DisplayName("handleSequentialNext: consumer payload does not overwrite remaining")
+        void handleSequentialNext_remainingWins() {
+            runtime.setState(ProjectState.PART_PROCESS_PLANNING);
+            Map<String, Object> p = new HashMap<>();
+            p.put("tpType", "FORGING");
+            p.put("pendingProcessTypes", new java.util.ArrayList<>(List.of("MACHINING", "CASTING")));
+            runtime.setPayload(p);
+            store.put(PROJECT_ID, runtime);
+
+            orchestrationService.onModuleResult(
+                    PROJECT_ID, ProjectEvent.PART_PROCESS_READY,
+                    Map.of("tpType", "STALE", "pendingProcessTypes", "[\"STALE\"]"), true);
+
+            ArgumentCaptor<ProjectRuntime> captor = ArgumentCaptor.forClass(ProjectRuntime.class);
+            verify(projectStateRepository, atLeast(1)).save(captor.capture());
+            ProjectRuntime saved = captor.getAllValues().get(captor.getAllValues().size() - 1);
+            assertThat(saved.getPayload().get("tpType")).isEqualTo("MACHINING");
+            @SuppressWarnings("unchecked")
+            java.util.List<String> remaining = (java.util.List<String>) saved.getPayload().get("pendingProcessTypes");
+            assertThat(remaining).containsExactly("CASTING");
+        }
+    }
 
     // =================================================================
     // getModel
